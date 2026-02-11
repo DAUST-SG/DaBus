@@ -156,6 +156,9 @@ export const updateBookingStatus = mutation({
     });
 
     const updated = await ctx.db.get(booking._id);
+    if (!updated) {
+      throw new ConvexError({ status: 404, message: "Booking not found after update" });
+    }
     const trip = await ctx.db.get(updated.trip_id);
     return toPublicBooking(updated, trip);
   },
@@ -187,6 +190,9 @@ export const promoteUser = mutation({
     });
 
     const promoted = await ctx.db.get(user._id);
+    if (!promoted) {
+      throw new ConvexError({ status: 404, message: "User not found after promotion" });
+    }
     return {
       id: promoted._id,
       email: promoted.email,

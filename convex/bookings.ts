@@ -74,6 +74,9 @@ export const create = mutation({
     });
 
     const booking = await ctx.db.get(bookingId);
+    if (!booking) {
+      throw new ConvexError({ status: 404, message: "Booking not found after creation" });
+    }
 
     return {
       booking: toPublicBooking(booking),
@@ -103,6 +106,9 @@ export const attachPaymentTransaction = mutation({
     });
 
     const updated = await ctx.db.get(booking._id);
+    if (!updated) {
+      throw new ConvexError({ status: 404, message: "Booking not found after update" });
+    }
     const trip = await ctx.db.get(updated.trip_id);
     return toPublicBooking(updated, trip);
   },
@@ -175,6 +181,9 @@ export const cancel = mutation({
     }
 
     const updated = await ctx.db.get(booking._id);
+    if (!updated) {
+      throw new ConvexError({ status: 404, message: "Booking not found after cancellation" });
+    }
     const trip = await ctx.db.get(updated.trip_id);
     return toPublicBooking(updated, trip);
   },

@@ -16,16 +16,23 @@ import {
   verifyPassword,
 } from "./lib/validation";
 
-const badRequest = (message: string) => {
+const badRequest = (message: string): never => {
   throw new ConvexError({ status: 400, message });
 };
 
-const forbidden = (message: string) => {
+const forbidden = (message: string): never => {
   throw new ConvexError({ status: 403, message });
 };
 
-const unauthorized = (message: string) => {
+const unauthorized = (message: string): never => {
   throw new ConvexError({ status: 401, message });
+};
+
+const requireFound = <T>(value: T | null | undefined, status: number, message: string): T => {
+  if (value === null || value === undefined) {
+    throw new ConvexError({ status, message });
+  }
+  return value;
 };
 
 const MAGIC_LINK_TTL_MS = 1000 * 60 * 20;
@@ -98,6 +105,9 @@ export const register = mutation({
       });
 
       const user = await ctx.db.get(userId);
+      if (!user) {
+        throw new ConvexError({ status: 404, message: "User not found after registration" });
+      }
       return {
         token,
         user: toPublicUser(user),
@@ -118,17 +128,21 @@ export const login = mutation({
   },
   handler: async (ctx, args) => {
     const email = normalizeEmail(args.email);
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q: any) => q.eq("email", email))
-      .unique();
+    const user = requireFound(
+      await ctx.db
+        .query("users")
+        .withIndex("by_email", (q: any) => q.eq("email", email))
+        .unique(),
+      401,
+      "Invalid email or password",
+    );
 
-    if (user?.role && user.role !== "admin") {
+    if (user.role !== "admin") {
       forbidden("Students must sign in with a magic link");
     }
 
-    if (!user?.password_hash) {
-      unauthorized("Invalid email or password");
+    if (!user.password_hash) {
+      throw new ConvexError({ status: 401, message: "Invalid email or password" });
     }
 
     const valid = await verifyPassword(args.password, user.password_hash);
@@ -210,12 +224,16 @@ export const consumeStudentMagicLink = mutation({
       }
 
       const tokenHash = await sha256(rawToken);
-      const link = await ctx.db
-        .query("magic_links")
-        .withIndex("by_token_hash", (q: any) => q.eq("token_hash", tokenHash))
-        .unique();
+      const link = requireFound(
+        await ctx.db
+          .query("magic_links")
+          .withIndex("by_token_hash", (q: any) => q.eq("token_hash", tokenHash))
+          .unique(),
+        401,
+        "Invalid or expired magic link",
+      );
 
-      if (!link || link.used_at) {
+      if (link.used_at) {
         unauthorized("Invalid or expired magic link");
       }
 
@@ -247,6 +265,9 @@ export const consumeStudentMagicLink = mutation({
           updated_at: timestamp,
         });
         user = await ctx.db.get(userId);
+        if (!user) {
+          throw new ConvexError({ status: 404, message: "User not found after creation" });
+        }
       }
 
       await ctx.db.patch(link._id, {
@@ -338,6 +359,9 @@ export const bootstrapIdentityUser = mutation({
         updated_at: now(),
       });
       const linked = await ctx.db.get(byEmail._id);
+      if (!linked) {
+        throw new ConvexError({ status: 404, message: "User not found after linking identity" });
+      }
       return toPublicUser(linked);
     }
 
@@ -359,6 +383,9 @@ export const bootstrapIdentityUser = mutation({
     });
 
     const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new ConvexError({ status: 404, message: "User not found after bootstrap" });
+    }
     return toPublicUser(user);
   },
 });
