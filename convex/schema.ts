@@ -1,0 +1,98 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+const userRole = v.union(v.literal("student"), v.literal("admin"));
+const tripStatus = v.union(
+  v.literal("scheduled"),
+  v.literal("full"),
+  v.literal("completed"),
+  v.literal("cancelled"),
+);
+const bookingStatus = v.union(
+  v.literal("pending"),
+  v.literal("confirmed"),
+  v.literal("cancelled"),
+  v.literal("completed"),
+);
+const paymentStatus = v.union(
+  v.literal("pending"),
+  v.literal("paid"),
+  v.literal("refunded"),
+);
+
+export default defineSchema({
+  users: defineTable({
+    auth_user_id: v.optional(v.string()),
+    email: v.string(),
+    full_name: v.string(),
+    phone: v.string(),
+    role: userRole,
+    password_hash: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+    legacy_id: v.optional(v.string()),
+  })
+    .index("by_auth_user_id", ["auth_user_id"])
+    .index("by_email", ["email"]),
+
+  sessions: defineTable({
+    token: v.string(),
+    user_id: v.id("users"),
+    expires_at: v.number(),
+    created_at: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_user_id", ["user_id"]),
+
+  magic_links: defineTable({
+    email: v.string(),
+    token_hash: v.string(),
+    expires_at: v.number(),
+    used_at: v.optional(v.number()),
+    created_at: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_token_hash", ["token_hash"]),
+
+  trips: defineTable({
+    origin: v.string(),
+    destination: v.string(),
+    departure_date: v.string(),
+    departure_time: v.string(),
+    capacity: v.number(),
+    available_seats: v.number(),
+    price: v.number(),
+    status: tripStatus,
+    created_by: v.optional(v.id("users")),
+    created_at: v.number(),
+    updated_at: v.number(),
+    legacy_id: v.optional(v.string()),
+  })
+    .index("by_departure_date", ["departure_date"])
+    .index("by_status", ["status"]),
+
+  bookings: defineTable({
+    trip_id: v.id("trips"),
+    user_id: v.optional(v.id("users")),
+    status: bookingStatus,
+    payment_status: paymentStatus,
+    payment_id: v.optional(v.string()),
+    payment_link: v.optional(v.string()),
+    full_name: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+    legacy_id: v.optional(v.string()),
+  })
+    .index("by_trip_id", ["trip_id"])
+    .index("by_user_id", ["user_id"])
+    .index("by_status", ["status"])
+    .index("by_created_at", ["created_at"])
+    .index("by_payment_id", ["payment_id"]),
+
+  webhook_events: defineTable({
+    source: v.string(),
+    event_id: v.string(),
+    processed_at: v.number(),
+  }).index("by_source_event", ["source", "event_id"]),
+});
