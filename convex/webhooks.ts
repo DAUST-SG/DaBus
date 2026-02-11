@@ -8,7 +8,11 @@ const isPaid = (status: string) => {
     normalized === "paid" ||
     normalized === "paid_and_blocked" ||
     normalized === "completed" ||
-    normalized === "success"
+    normalized === "success" ||
+    normalized === "successful" ||
+    normalized === "succeeded" ||
+    normalized === "done" ||
+    normalized === "approved"
   );
 };
 
@@ -19,7 +23,10 @@ const isFailed = (status: string) => {
     normalized === "cancelled" ||
     normalized === "canceled" ||
     normalized === "expired" ||
-    normalized === "error"
+    normalized === "error" ||
+    normalized === "rejected" ||
+    normalized === "declined" ||
+    normalized === "failure"
   );
 };
 
@@ -123,7 +130,12 @@ export const processNaboopayWebhook = mutation({
     }
 
     if (!booking) {
-      throw new ConvexError({ status: 404, message: "Booking not found for webhook" });
+      await ctx.db.insert("webhook_events", {
+        source: "naboopay",
+        event_id: args.event_id,
+        processed_at: now(),
+      });
+      return { success: true, ignored: true, reason: "booking_not_found" };
     }
 
     const status = args.transaction_status.toLowerCase();

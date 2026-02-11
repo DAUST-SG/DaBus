@@ -95,22 +95,28 @@ export const createNaboopayTransaction = async (
 };
 
 export const verifyNaboopaySignature = (
-  payload: Record<string, unknown>,
+  payload: string | Record<string, unknown>,
   signature: string,
   secretKey: string,
 ) => {
-  const expectedSignature = createHmac("sha256", secretKey)
-    .update(JSON.stringify(payload))
-    .digest("hex")
-    .toLowerCase();
+  const rawPayload = typeof payload === "string" ? payload : JSON.stringify(payload);
+  const providedRaw = signature.trim().replace(/^sha256=/i, "");
+  const expectedHex = createHmac("sha256", secretKey)
+    .update(rawPayload)
+    .digest("hex");
+  const expectedBase64 = createHmac("sha256", secretKey)
+    .update(rawPayload)
+    .digest("base64");
 
-  const provided = signature.trim().toLowerCase();
-  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
-  const providedBuffer = Buffer.from(provided, "utf8");
+  const safeCompare = (expected: string, actual: string) => {
+    const expectedBuffer = Buffer.from(expected, "utf8");
+    const actualBuffer = Buffer.from(actual, "utf8");
+    if (expectedBuffer.length !== actualBuffer.length) {
+      return false;
+    }
+    return timingSafeEqual(actualBuffer, expectedBuffer);
+  };
 
-  if (expectedBuffer.length !== providedBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(providedBuffer, expectedBuffer);
+  const providedHex = providedRaw.toLowerCase();
+  return safeCompare(expectedHex, providedHex) || safeCompare(expectedBase64, providedRaw);
 };

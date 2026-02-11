@@ -8,12 +8,51 @@ import {
 import { convexMutation } from "@/server/convexClient";
 import { verifyNaboopaySignature } from "@/server/naboopay";
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 const readSignature = (req: NextApiRequest) => {
-  const raw = req.headers["x-signature"];
-  if (Array.isArray(raw)) {
-    return raw[0] || "";
+  const headerKeys = [
+    "x-signature",
+    "x-webhook-signature",
+    "x-naboopay-signature",
+    "signature",
+  ] as const;
+
+  for (const key of headerKeys) {
+    const raw = req.headers[key];
+    if (Array.isArray(raw) && raw[0]) {
+      return raw[0];
+    }
+    if (typeof raw === "string" && raw) {
+      return raw;
+    }
   }
-  return raw || "";
+
+  return "";
+};
+
+const readRawBody = async (req: NextApiRequest) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+};
+
+const parseWebhookPayload = (rawBody: string) => {
+  if (!rawBody.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 };
 
 const buildEventId = (payload: Record<string, unknown>) => {
@@ -29,8 +68,12 @@ const buildEventId = (payload: Record<string, unknown>) => {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "GET" || req.method === "HEAD") {
+    return sendSuccess(res, { ok: true, source: "naboopay" });
+  }
+
   if (req.method !== "POST") {
-    return methodNotAllowed(req, res, ["POST"]);
+    return methodNotAllowed(req, res, ["GET", "HEAD", "POST"]);
   }
 
   const secret = process.env.NABOOPAY_WEBHOOK_SECRET;
@@ -38,10 +81,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return sendError(res, 500, "Webhook secret is not configured");
   }
 
-  const payload = (req.body || {}) as Record<string, unknown>;
+  const rawBody = await readRawBody(req);
+  const payload = parseWebhookPayload(rawBody);
+  if (!payload) {
+    return sendError(res, 400, "Invalid JSON payload");
+  }
+
   const signature = readSignature(req);
 
-  if (!signature || !verifyNaboopaySignature(payload, signature, secret)) {
+  if (!signature || !verifyNaboopaySignature(rawBody, signature, secret)) {
     return sendError(res, 401, "Invalid signature");
   }
 
@@ -49,7 +97,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const data = await convexMutation("webhooks:processNaboopayWebhook", {
       event_id: buildEventId(payload),
       order_id: payload.order_id ? String(payload.order_id) : undefined,
-      booking_id: payload.booking_id || (payload.metadata as Record<string, unknown> | undefined)?.booking_id,
       transaction_status: String(payload.transaction_status || payload.status || ""),
     });
 
