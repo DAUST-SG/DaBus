@@ -32,9 +32,9 @@ export default function HomePage() {
   }
 
   const filteredTrips = trips.filter((trip) => {
-    const matchesOrigin = !filter.origin || 
+    const matchesOrigin = !filter.origin ||
       trip.origin.toLowerCase().includes(filter.origin.toLowerCase())
-    const matchesDestination = !filter.destination || 
+    const matchesDestination = !filter.destination ||
       trip.destination.toLowerCase().includes(filter.destination.toLowerCase())
     return matchesOrigin && matchesDestination
   })
@@ -47,101 +47,148 @@ export default function HomePage() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
-      <div className="space-y-8">
+      <div className="space-y-10">
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white">
-          <h1 className="text-4xl font-bold mb-4">Your Journey Starts Here</h1>
-          <p className="text-blue-100 text-lg mb-6">
-            Safe, reliable transportation from campus to your home region
-          </p>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <input
-                type="text"
-                placeholder="From (e.g., Dakar)"
-                className="w-full px-4 py-3 rounded-lg text-gray-900"
-                value={filter.origin}
-                onChange={(e) => setFilter({ ...filter, origin: e.target.value })}
-              />
+        <section className="relative overflow-hidden rounded-3xl noise-overlay animate-fade-in">
+          {/* Gradient backdrop */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[rgba(var(--accent),0.12)] via-surface-card to-surface-secondary" />
+          <div className="absolute top-0 right-0 w-96 h-96 bg-[rgba(var(--accent),0.08)] rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3" />
+
+          <div className="relative px-6 sm:px-10 py-12 sm:py-16">
+            <div className="max-w-2xl">
+              <p className="text-accent text-sm font-medium tracking-widest uppercase mb-3 animate-slide-up" style={{ animationDelay: '0.1s', opacity: 0 }}>
+                DAUST Student Shuttle
+              </p>
+              <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold text-txt-primary leading-[1.1] mb-4 animate-slide-up" style={{ animationDelay: '0.2s', opacity: 0 }}>
+                Your Journey<br />
+                <span className="text-gradient">Starts Here</span>
+              </h1>
+              <p className="text-txt-secondary text-base sm:text-lg max-w-lg mb-8 animate-slide-up" style={{ animationDelay: '0.3s', opacity: 0 }}>
+                Safe, reliable transportation from campus to your home region. Book your seat in seconds.
+              </p>
             </div>
-            <div className="flex-1 min-w-[200px]">
-              <input
-                type="text"
-                placeholder="To (e.g., Touba)"
-                className="w-full px-4 py-3 rounded-lg text-gray-900"
-                value={filter.destination}
-                onChange={(e) => setFilter({ ...filter, destination: e.target.value })}
-              />
+
+            {/* Search */}
+            <div className="flex flex-col sm:flex-row gap-3 max-w-xl animate-slide-up" style={{ animationDelay: '0.4s', opacity: 0 }}>
+              <div className="flex-1 relative">
+                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="From where?"
+                  className="input-dark pl-10"
+                  value={filter.origin}
+                  onChange={(e) => setFilter({ ...filter, origin: e.target.value })}
+                />
+              </div>
+              <div className="flex-1 relative">
+                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Going to?"
+                  className="input-dark pl-10"
+                  value={filter.destination}
+                  onChange={(e) => setFilter({ ...filter, destination: e.target.value })}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Trips Section */}
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Available Trips</h2>
-          
+        <section>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-display text-2xl font-bold text-txt-primary">
+              Available Trips
+            </h2>
+            {filteredTrips.length > 0 && (
+              <span className="text-sm text-txt-muted">
+                {filteredTrips.length} trip{filteredTrips.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
           {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="w-10 h-10 rounded-full border-2 border-[rgba(var(--accent),0.2)] border-t-accent animate-spin" />
+              <p className="text-txt-muted text-sm mt-4">Loading trips...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-red-600">{error}</p>
+            <div className="text-center py-16 glass rounded-2xl">
+              <p className="text-[rgb(var(--danger))] mb-3">{error}</p>
               <button
                 onClick={fetchTrips}
-                className="mt-4 text-blue-600 hover:text-blue-700"
+                className="text-accent text-sm hover:underline"
               >
-                Try Again
+                Try again
               </button>
             </div>
           ) : filteredTrips.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-lg">
-              <p className="text-gray-500 text-lg">No trips found matching your criteria</p>
-              <p className="text-gray-400 mt-2">Check back later for new trips</p>
+            <div className="text-center py-16 glass rounded-2xl">
+              <div className="w-16 h-16 rounded-2xl bg-[rgba(var(--accent),0.08)] flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-txt-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </div>
+              <p className="text-txt-secondary text-lg mb-1">No trips found</p>
+              <p className="text-txt-muted text-sm">Check back later for new routes</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredTrips.map((trip) => (
-                <TripCard key={trip.id} trip={trip} />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredTrips.map((trip, i) => (
+                <div key={trip.id} className="animate-slide-up" style={{ animationDelay: `${i * 0.08}s`, opacity: 0 }}>
+                  <TripCard trip={trip} />
+                </div>
               ))}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Features Section */}
-        <div className="bg-gray-50 rounded-2xl p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Why Choose DaBus?</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
+        {/* Features */}
+        <section className="pb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                ),
+                title: 'Safe & Verified',
+                desc: 'All buses and drivers are verified for your safety',
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                ),
+                title: 'Mobile Payments',
+                desc: 'Pay instantly with Wave or Orange Money',
+              },
+              {
+                icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                ),
+                title: 'Campus Routes',
+                desc: 'Direct routes from DAUST to major cities',
+              },
+            ].map((feature, i) => (
+              <div
+                key={feature.title}
+                className="glass rounded-2xl p-6 group hover:bg-[rgba(var(--bg-card-hover),0.85)] transition-all duration-300 animate-slide-up"
+                style={{ animationDelay: `${0.6 + i * 0.1}s`, opacity: 0 }}
+              >
+                <div className="w-10 h-10 rounded-xl bg-[rgba(var(--accent),0.1)] flex items-center justify-center mb-4 group-hover:bg-[rgba(var(--accent),0.15)] transition-colors">
+                  <svg className="w-5 h-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    {feature.icon}
+                  </svg>
+                </div>
+                <h3 className="font-semibold text-txt-primary mb-1">{feature.title}</h3>
+                <p className="text-sm text-txt-muted leading-relaxed">{feature.desc}</p>
               </div>
-              <h3 className="font-semibold text-lg mb-2">Safe & Secure</h3>
-              <p className="text-gray-600">Verified buses and drivers for your safety</p>
-            </div>
-            <div className="text-center">
-              <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-lg mb-2">Easy Payments</h3>
-              <p className="text-gray-600">Pay with Wave or Orange Money</p>
-            </div>
-            <div className="text-center">
-              <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-lg mb-2">Door to Door</h3>
-              <p className="text-gray-600">Convenient pickup and drop-off locations</p>
-            </div>
+            ))}
           </div>
-        </div>
+        </section>
       </div>
     </>
   )

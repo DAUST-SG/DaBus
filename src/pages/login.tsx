@@ -74,85 +74,107 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-2xl">
-        <h1 className="text-2xl font-bold text-center mb-2">Sign In</h1>
-        <p className="text-center text-gray-600 mb-6">
-          Students use magic link. Admins use password.
-        </p>
+    <div className="min-h-[80vh] flex items-center justify-center py-8">
+      <div className="w-full max-w-2xl animate-scale-in">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="font-display text-3xl font-bold text-txt-primary mb-2">Welcome Back</h1>
+          <p className="text-txt-muted">
+            Students use magic link &middot; Admins use password
+          </p>
+        </div>
 
+        {/* Alerts */}
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <div className="mb-6 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm animate-slide-down">
             {error}
           </div>
         )}
         {notice && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          <div className="mb-6 px-4 py-3 rounded-xl bg-[rgba(var(--success),0.1)] border border-[rgba(var(--success),0.2)] text-[rgb(var(--success))] text-sm animate-slide-down">
             {notice}
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <form onSubmit={handleStudentSubmit} className="space-y-4 border rounded-lg p-5 bg-blue-50">
-            <h2 className="font-semibold text-lg text-blue-900">Student Access</h2>
-            <p className="text-sm text-blue-800">
-              Allowed emails: <strong>@webmail.daust.org</strong> or <strong>@daust.org</strong>
-            </p>
-            <div>
-              <label htmlFor="student-email" className="block text-sm font-medium text-gray-700 mb-1">
-                Student Email
-              </label>
-              <input
-                type="email"
-                id="student-email"
-                required
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={studentEmail}
-                onChange={(e) => setStudentEmail(e.target.value)}
-                placeholder="name@webmail.daust.org"
-              />
+        {/* Forms Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Student */}
+          <form onSubmit={handleStudentSubmit} className="glass rounded-2xl p-6 gradient-border">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-2 h-2 rounded-full bg-accent" />
+              <h2 className="font-display font-bold text-lg text-txt-primary">Student</h2>
             </div>
-            <Button type="submit" loading={studentLoading} className="w-full">
-              Send Magic Link
-            </Button>
-            {devMagicLink && (
-              <a className="text-sm text-blue-700 underline break-all block" href={devMagicLink}>
-                Open development magic link
-              </a>
-            )}
+            <p className="text-xs text-txt-muted mb-5">
+              Use your <span className="text-accent">@daust.org</span> email
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="student-email" className="block text-xs font-medium text-txt-secondary mb-1.5">
+                  Student Email
+                </label>
+                <input
+                  type="email"
+                  id="student-email"
+                  required
+                  className="input-dark"
+                  value={studentEmail}
+                  onChange={(e) => setStudentEmail(e.target.value)}
+                  placeholder="name@webmail.daust.org"
+                />
+              </div>
+              <Button type="submit" loading={studentLoading} className="w-full">
+                Send Magic Link
+              </Button>
+              {devMagicLink && (
+                <a className="text-xs text-accent hover:underline break-all block text-center" href={devMagicLink}>
+                  Open development magic link
+                </a>
+              )}
+            </div>
           </form>
 
-          <form onSubmit={handleAdminSubmit} className="space-y-4 border rounded-lg p-5">
-            <h2 className="font-semibold text-lg text-gray-900">Admin Access</h2>
-            <div>
-              <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700 mb-1">
-                Admin Email
-              </label>
-              <input
-                type="email"
-                id="admin-email"
-                required
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={adminForm.email}
-                onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
-              />
+          {/* Admin */}
+          <form onSubmit={handleAdminSubmit} className="glass rounded-2xl p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-2 h-2 rounded-full bg-txt-muted" />
+              <h2 className="font-display font-bold text-lg text-txt-primary">Admin</h2>
             </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                required
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={adminForm.password}
-                onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
-              />
+            <p className="text-xs text-txt-muted mb-5">
+              Administrative access only
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="admin-email" className="block text-xs font-medium text-txt-secondary mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  id="admin-email"
+                  required
+                  className="input-dark"
+                  value={adminForm.email}
+                  onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
+                />
+              </div>
+              <div>
+                <label htmlFor="password" className="block text-xs font-medium text-txt-secondary mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  id="password"
+                  required
+                  className="input-dark"
+                  value={adminForm.password}
+                  onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
+                />
+              </div>
+              <Button type="submit" loading={adminLoading} variant="secondary" className="w-full">
+                Sign In
+              </Button>
             </div>
-            <Button type="submit" loading={adminLoading} className="w-full">
-              Sign In as Admin
-            </Button>
           </form>
         </div>
       </div>

@@ -1,1 +1,10 @@
-{"/_app":"pages/_app.js","/_document":"pages/_document.js","/api/admin/bookings/[id]/status":"pages/api/admin/bookings/[id]/status.js","/admin":"pages/admin.html","/api/admin/bookings":"pages/api/admin/bookings.js","/api/admin/export/[type]":"pages/api/admin/export/[type].js","/api/admin/promote":"pages/api/admin/promote.js","/api/admin/stats":"pages/api/admin/stats.js","/api/admin/trips":"pages/api/admin/trips.js","/api/auth/login":"pages/api/auth/login.js","/api/auth/logout":"pages/api/auth/logout.js","/api/auth/magic-link/request":"pages/api/auth/magic-link/request.js","/api/auth/magic-link/verify":"pages/api/auth/magic-link/verify.js","/api/auth/me":"pages/api/auth/me.js","/api/auth/register":"pages/api/auth/register.js","/api/bookings/[id]/cancel":"pages/api/bookings/[id]/cancel.js","/api/bookings/[id]":"pages/api/bookings/[id].js","/api/bookings":"pages/api/bookings.js","/api/trips/[id]":"pages/api/trips/[id].js","/api/trips":"pages/api/trips.js","/api/webhooks/naboopay":"pages/api/webhooks/naboopay.js","/api/webhooks/wave":"pages/api/webhooks/wave.js","/bookings":"pages/bookings.html","/":"pages/index.html","/login":"pages/login.html","/magic-link":"pages/magic-link.html","/trips/[id]":"pages/trips/[id].html","/_error":"pages/_error.js","/404":"pages/404.html"}
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/admin": "pages/admin.js",
+  "/bookings": "pages/bookings.js",
+  "/login": "pages/login.js",
+  "/": "pages/index.js",
+  "/api/trips": "pages/api/trips.js"
+}

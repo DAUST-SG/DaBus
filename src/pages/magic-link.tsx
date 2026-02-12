@@ -53,19 +53,25 @@ export default function MagicLinkPage() {
         <title>Magic Link Sign In - DaBus</title>
       </Head>
       <div className="min-h-[70vh] flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-md text-center">
+        <div className="glass rounded-3xl p-10 w-full max-w-sm text-center animate-scale-in">
           {processing && (
             <>
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-              <p className="text-gray-700">Signing you in...</p>
+              <div className="w-12 h-12 rounded-full border-2 border-[rgba(var(--accent),0.2)] border-t-accent animate-spin mx-auto mb-5" />
+              <p className="font-display font-bold text-txt-primary text-lg mb-1">Signing you in</p>
+              <p className="text-txt-muted text-sm">Verifying your magic link...</p>
             </>
           )}
           {!processing && error && (
             <>
-              <p className="text-red-600 mb-4">{error}</p>
+              <div className="w-12 h-12 rounded-full bg-[rgba(var(--danger),0.1)] flex items-center justify-center mx-auto mb-5">
+                <svg className="w-6 h-6 text-[rgb(var(--danger))]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <p className="text-[rgb(var(--danger))] text-sm mb-4">{error}</p>
               <button
                 onClick={() => router.push(`/login?next=${encodeURIComponent(nextPath)}`)}
-                className="text-blue-600 hover:text-blue-700"
+                className="text-accent text-sm hover:underline"
               >
                 Request a new magic link
               </button>
