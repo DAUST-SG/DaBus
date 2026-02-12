@@ -5,8 +5,8 @@
   "devFiles": [],
   "ampDevFiles": [],
   "lowPriorityFiles": [
-    "static/MHz_OZmG9FWZZ4feVcs1N/_buildManifest.js",
-    "static/MHz_OZmG9FWZZ4feVcs1N/_ssgManifest.js"
+    "static/IvvH0Q0UwDaA6nrTSnXAQ/_buildManifest.js",
+    "static/IvvH0Q0UwDaA6nrTSnXAQ/_ssgManifest.js"
   ],
   "rootMainFiles": [],
   "pages": {
@@ -20,7 +20,7 @@
       "static/chunks/webpack-ee7e63bc15b31913.js",
       "static/chunks/framework-383a1cbbb406685c.js",
       "static/chunks/main-334cb31a0e661db1.js",
-      "static/css/1726afa7e86a4d32.css",
+      "static/css/514baf872abe06cd.css",
       "static/chunks/pages/_app-13fbc421969e8c03.js"
     ],
     "/_error": [
@@ -33,7 +33,7 @@
       "static/chunks/webpack-ee7e63bc15b31913.js",
       "static/chunks/framework-383a1cbbb406685c.js",
       "static/chunks/main-334cb31a0e661db1.js",
-      "static/chunks/pages/admin-cc545833eb7f5a94.js"
+      "static/chunks/pages/admin-7ff762e10f89a47b.js"
     ],
     "/bookings": [
       "static/chunks/webpack-ee7e63bc15b31913.js",

@@ -4,6 +4,8 @@ import Head from 'next/head'
 import api from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import Button from '@/components/Button'
+import DatePicker from '@/components/DatePicker'
+import TimePicker from '@/components/TimePicker'
 import { DashboardStats, Trip, Booking } from '@/types'
 
 export default function AdminDashboard() {
@@ -71,6 +73,10 @@ export default function AdminDashboard() {
 
   const handleCreateTrip = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!newTrip.departure_date || !newTrip.departure_time) {
+      alert('Please select a departure date and time')
+      return
+    }
     setCreatingTrip(true)
     try {
       const response = await api.post<{ success: boolean; data: Trip }>('/trips', newTrip)
@@ -485,23 +491,19 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-txt-secondary mb-1.5">Date</label>
-                    <input
-                      type="date"
-                      required
-                      className="input-dark"
+                    <DatePicker
                       value={newTrip.departure_date}
-                      onChange={(e) => setNewTrip({ ...newTrip, departure_date: e.target.value })}
+                      onChange={(val) => setNewTrip({ ...newTrip, departure_date: val })}
                     />
+                    <input type="hidden" required value={newTrip.departure_date} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-txt-secondary mb-1.5">Time</label>
-                    <input
-                      type="time"
-                      required
-                      className="input-dark"
+                    <TimePicker
                       value={newTrip.departure_time}
-                      onChange={(e) => setNewTrip({ ...newTrip, departure_time: e.target.value })}
+                      onChange={(val) => setNewTrip({ ...newTrip, departure_time: val })}
                     />
+                    <input type="hidden" required value={newTrip.departure_time} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
