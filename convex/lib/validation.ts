@@ -1,5 +1,5 @@
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const allowedStudentDomains = ["webmail.daust.org", "daust.org"];
+const allowedStudentDomains = ["webmail.daust.org", "daust.org", "mydaust.com"];
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
@@ -14,7 +14,7 @@ export const isAllowedStudentEmail = (email: string) =>
 
 export const assertAllowedStudentEmail = (email: string) => {
   if (!isAllowedStudentEmail(email)) {
-    throw new Error("Only @webmail.daust.org or @daust.org emails are allowed");
+    throw new Error("Only @webmail.daust.org, @daust.org, or @mydaust.com emails are allowed");
   }
 };
 
