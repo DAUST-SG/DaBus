@@ -80,6 +80,7 @@ export default defineSchema({
     payment_link: v.optional(v.string()),
     full_name: v.optional(v.string()),
     phone: v.optional(v.string()),
+    email: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),

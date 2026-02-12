@@ -1,6 +1,7 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
-import { requireBookingOwnerOrAdmin, requireUser } from "./lib/guards";
+import { getCurrentUser, requireBookingOwnerOrAdmin, requireUser } from "./lib/guards";
 import { toPublicBooking } from "./lib/serializers";
 import { now } from "./lib/time";
 
@@ -32,13 +33,15 @@ export const create = mutation({
     trip_id: v.id("trips"),
     full_name: v.string(),
     phone: v.string(),
+    email: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (!args.full_name.trim() || !args.phone.trim()) {
       throw new ConvexError({ status: 400, message: "Full name and phone are required" });
     }
 
-    const user = await requireUser(ctx, args.sessionToken);
+    // Auth is optional: logged-in users get user_id, guests proceed without
+    const user = await getCurrentUser(ctx, args.sessionToken);
 
     const trip = await ctx.db.get(args.trip_id);
     if (!trip) {
@@ -53,15 +56,21 @@ export const create = mutation({
       throw new ConvexError({ status: 400, message: "No seats available" });
     }
 
+    // Guest bookings require an email
+    if (!user && !args.email?.trim()) {
+      throw new ConvexError({ status: 400, message: "Email is required for guest bookings" });
+    }
+
     const timestamp = now();
 
     const bookingId = await ctx.db.insert("bookings", {
       trip_id: trip._id,
-      user_id: user._id,
+      user_id: user?._id,
       status: "pending",
       payment_status: "pending",
       full_name: args.full_name.trim(),
       phone: args.phone.trim(),
+      email: args.email?.trim(),
       created_at: timestamp,
       updated_at: timestamp,
     });
@@ -72,6 +81,13 @@ export const create = mutation({
       status: updatedSeats === 0 ? "full" : "scheduled",
       updated_at: timestamp,
     });
+
+    // Schedule auto-expiry for unpaid bookings after 10 minutes
+    await ctx.scheduler.runAfter(
+      10 * 60 * 1000,
+      internal.bookings.expireUnpaidBooking,
+      { bookingId },
+    );
 
     const booking = await ctx.db.get(bookingId);
     if (!booking) {
@@ -97,7 +113,10 @@ export const attachPaymentTransaction = mutation({
       throw new ConvexError({ status: 404, message: "Booking not found" });
     }
 
-    await requireBookingOwnerOrAdmin(ctx, booking, args.sessionToken);
+    // Only enforce ownership check for bookings tied to a user account
+    if (booking.user_id) {
+      await requireBookingOwnerOrAdmin(ctx, booking, args.sessionToken);
+    }
 
     await ctx.db.patch(booking._id, {
       payment_id: args.payment_id,
@@ -162,7 +181,10 @@ export const cancel = mutation({
       throw new ConvexError({ status: 404, message: "Booking not found" });
     }
 
-    await requireBookingOwnerOrAdmin(ctx, booking, args.sessionToken);
+    // Only enforce ownership check for bookings tied to a user account
+    if (booking.user_id) {
+      await requireBookingOwnerOrAdmin(ctx, booking, args.sessionToken);
+    }
 
     if (booking.status === "cancelled") {
       const trip = await ctx.db.get(booking.trip_id);
@@ -186,5 +208,27 @@ export const cancel = mutation({
     }
     const trip = await ctx.db.get(updated.trip_id);
     return toPublicBooking(updated, trip);
+  },
+});
+
+export const expireUnpaidBooking = internalMutation({
+  args: {
+    bookingId: v.id("bookings"),
+  },
+  handler: async (ctx, args) => {
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking) return;
+
+    // Only expire if still pending and unpaid
+    if (booking.status !== "pending" || booking.payment_status !== "pending") {
+      return;
+    }
+
+    await ctx.db.patch(booking._id, {
+      status: "cancelled",
+      updated_at: now(),
+    });
+
+    await restoreSeatIfNeeded(ctx, booking);
   },
 });

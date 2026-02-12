@@ -128,6 +128,17 @@ export default function AdminDashboard() {
     )
   }
 
+  // Compute total paid revenue per trip
+  const revenueByTrip = allBookings.reduce<Record<string, number>>((acc, booking) => {
+    if (booking.payment_status === 'paid' && booking.trip_id) {
+      const trip = allTrips.find((t) => t.id === booking.trip_id)
+      if (trip) {
+        acc[booking.trip_id] = (acc[booking.trip_id] || 0) + trip.price
+      }
+    }
+    return acc
+  }, {})
+
   const normalizedQuery = registrationQuery.trim().toLowerCase()
   const filteredBookings = allBookings.filter((booking) => {
     if (selectedTripId !== 'all' && booking.trip_id !== selectedTripId) {
@@ -290,12 +301,17 @@ export default function AdminDashboard() {
                         {new Date(trip.departure_date).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className={`badge ${
-                      trip.status === 'scheduled' ? 'badge-success' :
-                      trip.status === 'full' ? 'badge-warning' : 'badge-neutral'
-                    }`}>
-                      {trip.status}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium text-[rgb(var(--warning))]">
+                        {(revenueByTrip[trip.id] || 0).toLocaleString()} CFA
+                      </span>
+                      <span className={`badge ${
+                        trip.status === 'scheduled' ? 'badge-success' :
+                        trip.status === 'full' ? 'badge-warning' : 'badge-neutral'
+                      }`}>
+                        {trip.status}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -502,16 +518,16 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-txt-secondary mb-1.5">Price (CFA)</label>
-                    <select
+                    <input
+                      type="number"
                       required
+                      min="0"
+                      step="100"
                       className="input-dark"
+                      placeholder="e.g. 2500"
                       value={newTrip.price ?? ''}
                       onChange={(e) => setNewTrip({ ...newTrip, price: e.target.value ? parseInt(e.target.value) : null })}
-                    >
-                      <option value="">Select</option>
-                      <option value={2500}>2,500 CFA</option>
-                      <option value={3000}>3,000 CFA</option>
-                    </select>
+                    />
                   </div>
                 </div>
                 <div className="flex gap-3 pt-3">

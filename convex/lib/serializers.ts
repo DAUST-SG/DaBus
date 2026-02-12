@@ -31,6 +31,7 @@ export const toPublicBooking = (booking: any, trip?: any) => ({
   payment_link: booking.payment_link,
   full_name: booking.full_name,
   phone: booking.phone,
+  email: booking.email,
   created_at: toIso(booking.created_at),
   trip: trip ? toPublicTrip(trip) : undefined,
 });

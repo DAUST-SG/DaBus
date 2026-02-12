@@ -19,9 +19,21 @@ export default function TripDetailsPage() {
 
   const [customerInfo, setCustomerInfo] = useState({
     full_name: '',
-    phone: ''
+    phone: '',
+    email: ''
   })
   const [showForm, setShowForm] = useState(false)
+
+  // Handle payment result query params
+  useEffect(() => {
+    if (!router.isReady) return
+    const { payment } = router.query
+    if (payment === 'success') {
+      setSuccess('Payment successful! Your booking is confirmed.')
+    } else if (payment === 'error') {
+      setError('Payment failed or was cancelled. Please try again.')
+    }
+  }, [router.isReady, router.query])
 
   useEffect(() => {
     if (id) {
@@ -45,10 +57,6 @@ export default function TripDetailsPage() {
 
   const handleBooking = async () => {
     if (!trip) return
-    if (!user) {
-      router.push(`/login?next=${encodeURIComponent(`/trips/${String(id || '')}`)}`)
-      return
-    }
 
     setBookingLoading(true)
     setError(null)
@@ -58,7 +66,8 @@ export default function TripDetailsPage() {
       const response = await api.post<{ success: boolean; data: { booking: { id: string }; payment?: { checkout_url?: string } } }>('/bookings', {
         trip_id: id,
         full_name: customerInfo.full_name,
-        phone: customerInfo.phone
+        phone: customerInfo.phone,
+        email: customerInfo.email || undefined,
       })
 
       if (response.data.success) {
@@ -239,20 +248,8 @@ export default function TripDetailsPage() {
                       </div>
                     </div>
 
-                    {!user && (
-                      <p className="text-xs text-accent">
-                        Sign in with your DAUST email to book this trip.
-                      </p>
-                    )}
-
                     <Button
-                      onClick={() => {
-                        if (!user) {
-                          router.push(`/login?next=${encodeURIComponent(`/trips/${String(id || '')}`)}`)
-                          return
-                        }
-                        setShowForm(true)
-                      }}
+                      onClick={() => setShowForm(true)}
                       className="w-full"
                       size="lg"
                     >
@@ -291,6 +288,22 @@ export default function TripDetailsPage() {
                           placeholder="+221 77 123 45 67"
                         />
                       </div>
+                      {!user && (
+                        <div>
+                          <label htmlFor="email" className="block text-xs font-medium text-txt-secondary mb-1.5">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            id="email"
+                            required
+                            className="input-dark"
+                            value={customerInfo.email}
+                            onChange={(e) => setCustomerInfo({ ...customerInfo, email: e.target.value })}
+                            placeholder="you@example.com"
+                          />
+                        </div>
+                      )}
                       <div className="flex gap-3 pt-2">
                         <Button
                           type="button"

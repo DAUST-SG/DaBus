@@ -45,23 +45,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     try {
       const token = getBearerToken(req);
-      if (!token) {
-        return sendError(res, 401, "Sign in is required before booking");
+      const email = String(req.body?.email || "").trim();
+
+      // Guest bookings require an email
+      if (!token && !email) {
+        return sendError(res, 400, "Email is required for guest bookings");
       }
 
-      const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string } }>("bookings:create", {
-        sessionToken: token,
+      const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string; email?: string } }>("bookings:create", {
+        sessionToken: token || undefined,
         trip_id: String(req.body?.trip_id || ""),
         full_name: String(req.body?.full_name || ""),
         phone: String(req.body?.phone || ""),
+        email: email || undefined,
       });
 
       const bookingId = String(created?.booking?.id || "");
       const tripId = String(created?.booking?.trip_id || req.body?.trip_id || "");
 
       try {
+        // For logged-in users, fetch their profile; for guests, skip
         const [me, trip] = await Promise.all([
-          convexQuery<{ email: string; full_name: string }>("auth:me", { sessionToken: token }),
+          token
+            ? convexQuery<{ email: string; full_name: string }>("auth:me", { sessionToken: token })
+            : Promise.resolve(null),
           convexQuery<{ origin: string; destination: string; departure_date: string; departure_time: string; price: number }>(
             "trips:getById",
             { tripId },
@@ -69,15 +76,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ]);
 
         const baseUrl = resolveBaseUrl(req);
-        const successUrl = `${baseUrl}/bookings?payment=success&booking_id=${encodeURIComponent(bookingId)}`;
-        const errorUrl = `${baseUrl}/bookings?payment=error&booking_id=${encodeURIComponent(bookingId)}`;
+        const successUrl = `${baseUrl}/trips/${encodeURIComponent(tripId)}?payment=success`;
+        const errorUrl = `${baseUrl}/trips/${encodeURIComponent(tripId)}?payment=error`;
 
         const checkout = await createNaboopayTransaction({
           amount: Number(trip.price),
           productName: `${trip.origin} → ${trip.destination} (${trip.departure_date} ${trip.departure_time})`,
           customer: {
-            name: String(created.booking.full_name || me.full_name || "Student"),
-            email: String(me.email || ""),
+            name: String(created.booking.full_name || me?.full_name || "Guest"),
+            email: email || String(me?.email || ""),
             phone: String(created.booking.phone || ""),
           },
           successUrl,
@@ -85,7 +92,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         const updatedBooking = await convexMutation("bookings:attachPaymentTransaction", {
-          sessionToken: token,
+          sessionToken: token || undefined,
           bookingId,
           payment_id: checkout.order_id,
           payment_link: checkout.checkout_url,
@@ -101,8 +108,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       } catch (paymentError) {
         if (bookingId) {
+          // For guest bookings without a token, cancel without session
           await convexMutation("bookings:cancel", {
-            sessionToken: token,
+            sessionToken: token || undefined,
             bookingId,
           }).catch(() => undefined);
         }

@@ -59,6 +59,7 @@ export const createNaboopayTransaction = async (
       },
       success_url: input.successUrl,
       error_url: input.errorUrl,
+      fees_customer_side: true,
     }),
   });
 
