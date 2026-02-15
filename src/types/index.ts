@@ -18,7 +18,7 @@ export interface Trip {
   capacity: number
   available_seats: number
   price: number
-  status: 'scheduled' | 'full' | 'completed' | 'cancelled'
+  status: 'scheduled' | 'full' | 'completed' | 'cancelled' | 'archived'
   created_at: string
 }
 

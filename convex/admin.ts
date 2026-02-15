@@ -14,7 +14,7 @@ const restoreSeat = async (ctx: any, booking: any) => {
   const available = trip.available_seats + 1;
   await ctx.db.patch(trip._id, {
     available_seats: available,
-    status: trip.status === "completed" || trip.status === "cancelled"
+    status: trip.status === "completed" || trip.status === "cancelled" || trip.status === "archived"
       ? trip.status
       : available >= trip.capacity
         ? "scheduled"
@@ -66,6 +66,7 @@ export const stats = query({
     const upcomingTrips = trips.filter(
       (trip: any) =>
         trip.departure_date >= today &&
+        trip.status !== "archived" &&
         (trip.status === "scheduled" || trip.status === "full"),
     ).length;
 
@@ -198,5 +199,23 @@ export const promoteUser = mutation({
       email: promoted.email,
       role: promoted.role,
     };
+  },
+});
+
+export const getBookingById = query({
+  args: {
+    sessionToken: v.optional(v.string()),
+    bookingId: v.id("bookings"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.sessionToken);
+
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking) {
+      throw new ConvexError({ status: 404, message: "Booking not found" });
+    }
+
+    const trip = await ctx.db.get(booking.trip_id);
+    return { booking, trip };
   },
 });

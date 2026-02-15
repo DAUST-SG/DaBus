@@ -7,6 +7,7 @@ const tripStatus = v.union(
   v.literal("full"),
   v.literal("completed"),
   v.literal("cancelled"),
+  v.literal("archived"),
 );
 const bookingStatus = v.union(
   v.literal("pending"),

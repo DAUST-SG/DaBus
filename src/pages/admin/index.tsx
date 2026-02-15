@@ -19,6 +19,8 @@ export default function AdminDashboard() {
   const [selectedTripId, setSelectedTripId] = useState('all')
   const [registrationQuery, setRegistrationQuery] = useState('')
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [archivingId, setArchivingId] = useState<string | null>(null)
+  const [refundingId, setRefundingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateTrip, setShowCreateTrip] = useState(false)
@@ -123,6 +125,45 @@ export default function AdminDashboard() {
     } catch {
       alert('Failed to export')
     }
+  }
+
+  const handleArchiveTrip = async (tripId: string) => {
+    if (!confirm('Archive this trip? It will be hidden from users.')) return
+    try {
+      setArchivingId(tripId)
+      const response = await api.put<{ success: boolean }>(`/trips/${tripId}`, { status: 'archived' })
+      if (response.data.success) {
+        fetchDashboardData()
+      }
+    } catch (err) {
+      alert('Failed to archive trip')
+    } finally {
+      setArchivingId(null)
+    }
+  }
+
+  const handleRefundBooking = async (bookingId: string) => {
+    if (!confirm('Refund this booking? This will call Naboopay refund and cancel the booking.')) return
+    try {
+      setRefundingId(bookingId)
+      const response = await api.post<{ success: boolean }>(`/admin/bookings/${bookingId}/refund`)
+      if (response.data.success) {
+        fetchDashboardData()
+      }
+    } catch (err: unknown) {
+      const errorMessage = typeof err === 'object' && err && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to refund booking'
+      alert(errorMessage)
+    } finally {
+      setRefundingId(null)
+    }
+  }
+
+  const isDepartureMoreThan3hAway = (trip?: Trip) => {
+    if (!trip) return false
+    const departure = new Date(`${trip.departure_date}T${trip.departure_time}`)
+    const nowPlus3h = new Date(Date.now() + 3 * 60 * 60 * 1000)
+    return departure > nowPlus3h
   }
 
   if (authLoading || loading) {
@@ -313,10 +354,21 @@ export default function AdminDashboard() {
                       </span>
                       <span className={`badge ${
                         trip.status === 'scheduled' ? 'badge-success' :
-                        trip.status === 'full' ? 'badge-warning' : 'badge-neutral'
+                        trip.status === 'full' ? 'badge-warning' :
+                        trip.status === 'archived' ? 'badge-neutral opacity-60' : 'badge-neutral'
                       }`}>
                         {trip.status}
                       </span>
+                      {trip.status !== 'archived' && trip.status !== 'completed' && trip.status !== 'cancelled' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={archivingId === trip.id}
+                          onClick={() => handleArchiveTrip(trip.id)}
+                        >
+                          Archive
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -352,6 +404,18 @@ export default function AdminDashboard() {
                           onClick={() => handleConfirmBooking(booking.id)}
                         >
                           Confirm
+                        </Button>
+                      )}
+                      {booking.payment_status === 'paid' && booking.status !== 'cancelled' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={refundingId === booking.id}
+                          disabled={!isDepartureMoreThan3hAway(booking.trip)}
+                          onClick={() => handleRefundBooking(booking.id)}
+                          title={!isDepartureMoreThan3hAway(booking.trip) ? 'Cannot refund — less than 3h before departure' : 'Refund'}
+                        >
+                          Refund
                         </Button>
                       )}
                     </div>
@@ -438,18 +502,33 @@ export default function AdminDashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-3.5 text-right">
-                        {booking.status === 'pending' ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            loading={confirmingId === booking.id}
-                            onClick={() => handleConfirmBooking(booking.id)}
-                          >
-                            Confirm
-                          </Button>
-                        ) : (
-                          <span className="text-txt-muted text-xs">&mdash;</span>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          {booking.status === 'pending' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              loading={confirmingId === booking.id}
+                              onClick={() => handleConfirmBooking(booking.id)}
+                            >
+                              Confirm
+                            </Button>
+                          )}
+                          {booking.payment_status === 'paid' && booking.status !== 'cancelled' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={refundingId === booking.id}
+                              disabled={!isDepartureMoreThan3hAway(booking.trip)}
+                              onClick={() => handleRefundBooking(booking.id)}
+                              title={!isDepartureMoreThan3hAway(booking.trip) ? 'Cannot refund — trip departs in less than 3 hours' : 'Refund this booking'}
+                            >
+                              Refund
+                            </Button>
+                          )}
+                          {booking.status !== 'pending' && booking.payment_status !== 'paid' && (
+                            <span className="text-txt-muted text-xs">&mdash;</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

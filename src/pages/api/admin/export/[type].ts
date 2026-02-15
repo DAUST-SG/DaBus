@@ -38,7 +38,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         sessionToken: token,
         limit: 5000,
       });
-      csv = toCsv(bookings);
+      const simplified = bookings.map((b: any) => {
+        const parts = String(b.full_name || "").trim().split(/\s+/);
+        const firstName = parts[0] || "";
+        const lastName = parts.slice(1).join(" ") || "";
+        return {
+          first_name: firstName,
+          last_name: lastName,
+          payment_status: b.payment_status,
+          email: b.email || "",
+        };
+      });
+      csv = toCsv(simplified);
     }
 
     if (type === "report") {

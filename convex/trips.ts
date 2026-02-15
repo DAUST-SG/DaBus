@@ -20,6 +20,7 @@ export const list = query({
         v.literal("full"),
         v.literal("completed"),
         v.literal("cancelled"),
+        v.literal("archived"),
       ),
     ),
   },
@@ -29,6 +30,8 @@ export const list = query({
 
     const rows = await ctx.db.query("trips").collect();
     const filtered = rows.filter((trip: any) => {
+      // Hide archived trips from user-facing list unless explicitly requested
+      if (trip.status === "archived" && args.status !== "archived") return false;
       const matchesOrigin =
         !origin || trip.origin.toLowerCase().includes(origin);
       const matchesDestination =
@@ -111,6 +114,7 @@ export const update = mutation({
         v.literal("full"),
         v.literal("completed"),
         v.literal("cancelled"),
+        v.literal("archived"),
       ),
     ),
   },
