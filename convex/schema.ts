@@ -25,12 +25,12 @@ export default defineSchema({
   users: defineTable({
     auth_user_id: v.optional(v.string()),
     email: v.string(),
-    full_name: v.string(),
-    phone: v.string(),
+    full_name: v.optional(v.string()),
+    phone: v.optional(v.string()),
     role: userRole,
     password_hash: v.optional(v.string()),
-    created_at: v.number(),
-    updated_at: v.number(),
+    created_at: v.optional(v.number()),
+    updated_at: v.optional(v.number()),
     legacy_id: v.optional(v.string()),
   })
     .index("by_auth_user_id", ["auth_user_id"])

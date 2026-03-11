@@ -1,9 +1,17 @@
 import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
-import { toPublicBooking, toPublicTrip } from "./lib/serializers";
+import { toPublicBooking, toPublicTrip, toPublicUser } from "./lib/serializers";
 import { now } from "./lib/time";
-import { normalizeEmail } from "./lib/validation";
+import {
+  assertRequiredText,
+  assertStrongPassword,
+  assertValidEmail,
+  createPasswordHash,
+  normalizeEmail,
+  normalizePhone,
+  verifyPassword,
+} from "./lib/validation";
 
 const restoreSeat = async (ctx: any, booking: any) => {
   const trip = await ctx.db.get(booking.trip_id);
@@ -219,3 +227,81 @@ export const getBookingById = query({
     return { booking, trip };
   },
 });
+
+export const addAdmin = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    email: v.string(),
+    password: v.string(),
+    full_name: v.string(),
+    phone: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.sessionToken);
+
+    const email = normalizeEmail(args.email);
+    assertValidEmail(email);
+    assertStrongPassword(args.password);
+    assertRequiredText(args.full_name, "Full name");
+    assertRequiredText(args.phone, "Phone");
+
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .unique();
+
+    if (existing) {
+      throw new ConvexError({ status: 400, message: "An account with this email already exists" });
+    }
+
+    const passwordHash = await createPasswordHash(args.password);
+    const timestamp = now();
+
+    const userId = await ctx.db.insert("users", {
+      email,
+      full_name: args.full_name.trim(),
+      phone: normalizePhone(args.phone),
+      role: "admin",
+      password_hash: passwordHash,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new ConvexError({ status: 500, message: "Failed to create admin user" });
+    }
+    return toPublicUser(user);
+  },
+});
+
+export const changePassword = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    current_password: v.string(),
+    new_password: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx, args.sessionToken);
+
+    if (!admin.password_hash) {
+      throw new ConvexError({ status: 400, message: "No password set on this account" });
+    }
+
+    const valid = await verifyPassword(args.current_password, admin.password_hash);
+    if (!valid) {
+      throw new ConvexError({ status: 401, message: "Current password is incorrect" });
+    }
+
+    assertStrongPassword(args.new_password);
+
+    const newHash = await createPasswordHash(args.new_password);
+    await ctx.db.patch(admin._id, {
+      password_hash: newHash,
+      updated_at: now(),
+    });
+
+    return { success: true };
+  },
+});
+

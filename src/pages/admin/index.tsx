@@ -34,6 +34,20 @@ export default function AdminDashboard() {
   })
   const [creatingTrip, setCreatingTrip] = useState(false)
 
+  // Add Admin modal state
+  const [showAddAdmin, setShowAddAdmin] = useState(false)
+  const [newAdmin, setNewAdmin] = useState({ email: '', full_name: '', phone: '', password: '' })
+  const [addingAdmin, setAddingAdmin] = useState(false)
+  const [addAdminError, setAddAdminError] = useState<string | null>(null)
+  const [addAdminSuccess, setAddAdminSuccess] = useState(false)
+
+  // Change Password modal state
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '', confirm_password: '' })
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false)
+
   useEffect(() => {
     if (!authLoading && (!user || user.role !== 'admin')) {
       router.push('/login')
@@ -166,6 +180,63 @@ export default function AdminDashboard() {
     return departure > nowPlus3h
   }
 
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddAdminError(null)
+    setAddAdminSuccess(false)
+    setAddingAdmin(true)
+    try {
+      const response = await api.post<{ success: boolean }>('/admin/members', newAdmin)
+      if (response.data.success) {
+        setAddAdminSuccess(true)
+        setNewAdmin({ email: '', full_name: '', phone: '', password: '' })
+        setTimeout(() => {
+          setShowAddAdmin(false)
+          setAddAdminSuccess(false)
+        }, 1500)
+      }
+    } catch (err: unknown) {
+      const errorMessage = typeof err === 'object' && err && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to add admin'
+      setAddAdminError(errorMessage)
+    } finally {
+      setAddingAdmin(false)
+    }
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setChangePasswordError(null)
+    setChangePasswordSuccess(false)
+
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      setChangePasswordError('New passwords do not match')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      const response = await api.post<{ success: boolean }>('/admin/change-password', {
+        current_password: passwordForm.current_password,
+        new_password: passwordForm.new_password,
+      })
+      if (response.data.success) {
+        setChangePasswordSuccess(true)
+        setPasswordForm({ current_password: '', new_password: '', confirm_password: '' })
+        setTimeout(() => {
+          setShowChangePassword(false)
+          setChangePasswordSuccess(false)
+        }, 1500)
+      }
+    } catch (err: unknown) {
+      const errorMessage = typeof err === 'object' && err && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to change password'
+      setChangePasswordError(errorMessage)
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -279,6 +350,18 @@ export default function AdminDashboard() {
               </svg>
               New Trip
             </Button>
+            <Button variant="outline" size="sm" onClick={() => { setShowAddAdmin(true); setAddAdminError(null); setAddAdminSuccess(false) }}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              Add Admin
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { setShowChangePassword(true); setChangePasswordError(null); setChangePasswordSuccess(false) }}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              Password
+            </Button>
           </div>
         </div>
 
@@ -352,11 +435,10 @@ export default function AdminDashboard() {
                       <span className="text-xs font-medium text-[rgb(var(--warning))]">
                         {(revenueByTrip[trip.id] || 0).toLocaleString()} CFA
                       </span>
-                      <span className={`badge ${
-                        trip.status === 'scheduled' ? 'badge-success' :
-                        trip.status === 'full' ? 'badge-warning' :
-                        trip.status === 'archived' ? 'badge-neutral opacity-60' : 'badge-neutral'
-                      }`}>
+                      <span className={`badge ${trip.status === 'scheduled' ? 'badge-success' :
+                          trip.status === 'full' ? 'badge-warning' :
+                            trip.status === 'archived' ? 'badge-neutral opacity-60' : 'badge-neutral'
+                        }`}>
                         {trip.status}
                       </span>
                       {trip.status !== 'archived' && trip.status !== 'completed' && trip.status !== 'cancelled' && (
@@ -390,10 +472,9 @@ export default function AdminDashboard() {
                       <p className="text-xs text-txt-muted">{booking.phone || 'No phone'}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`badge ${
-                        booking.status === 'confirmed' ? 'badge-success' :
-                        booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
-                      }`}>
+                      <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
+                          booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
+                        }`}>
                         {booking.status}
                       </span>
                       {booking.status === 'pending' && (
@@ -494,10 +575,9 @@ export default function AdminDashboard() {
                         {new Date(booking.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={`badge ${
-                          booking.status === 'confirmed' ? 'badge-success' :
-                          booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
-                        }`}>
+                        <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
+                            booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
+                          }`}>
                           {booking.status}
                         </span>
                       </td>
@@ -617,6 +697,148 @@ export default function AdminDashboard() {
                   </Button>
                   <Button type="submit" loading={creatingTrip} className="flex-1">
                     Create Trip
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Add Admin Modal */}
+        {showAddAdmin && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddAdmin(false)} />
+            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
+              <h2 className="font-display text-xl font-bold text-txt-primary mb-5">Add Admin Member</h2>
+
+              {addAdminSuccess && (
+                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--success),0.1)] border border-[rgba(var(--success),0.2)] text-[rgb(var(--success))] text-sm">
+                  Admin added successfully!
+                </div>
+              )}
+              {addAdminError && (
+                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
+                  {addAdminError}
+                </div>
+              )}
+
+              <form onSubmit={handleAddAdmin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Email</label>
+                  <input
+                    type="email"
+                    required
+                    className="input-dark"
+                    placeholder="admin@example.com"
+                    value={newAdmin.email}
+                    onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    className="input-dark"
+                    placeholder="John Doe"
+                    value={newAdmin.full_name}
+                    onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Phone</label>
+                  <input
+                    type="tel"
+                    required
+                    className="input-dark"
+                    placeholder="+221 77 000 0000"
+                    value={newAdmin.phone}
+                    onChange={(e) => setNewAdmin({ ...newAdmin, phone: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    className="input-dark"
+                    placeholder="Min 6 characters"
+                    value={newAdmin.password}
+                    onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-3 pt-3">
+                  <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowAddAdmin(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" loading={addingAdmin} className="flex-1">
+                    Add Admin
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Change Password Modal */}
+        {showChangePassword && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowChangePassword(false)} />
+            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
+              <h2 className="font-display text-xl font-bold text-txt-primary mb-5">Change Password</h2>
+
+              {changePasswordSuccess && (
+                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--success),0.1)] border border-[rgba(var(--success),0.2)] text-[rgb(var(--success))] text-sm">
+                  Password changed successfully!
+                </div>
+              )}
+              {changePasswordError && (
+                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
+                  {changePasswordError}
+                </div>
+              )}
+
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Current Password</label>
+                  <input
+                    type="password"
+                    required
+                    className="input-dark"
+                    value={passwordForm.current_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">New Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    className="input-dark"
+                    placeholder="Min 6 characters"
+                    value={passwordForm.new_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Confirm New Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    className="input-dark"
+                    value={passwordForm.confirm_password}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-3 pt-3">
+                  <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowChangePassword(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" loading={changingPassword} className="flex-1">
+                    Update Password
                   </Button>
                 </div>
               </form>
