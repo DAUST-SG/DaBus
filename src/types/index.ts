@@ -31,6 +31,7 @@ export interface Booking {
   payment_link?: string
   full_name?: string
   phone?: string
+  pickup_location?: string
   created_at: string
   trip?: Trip
 }

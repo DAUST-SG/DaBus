@@ -17,10 +17,17 @@ export default function TripDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
+  const PICKUP_LOCATIONS = [
+    { id: 'liberte6', label: 'Liberté 6', mapsUrl: 'https://maps.app.goo.gl/ccFR1yNR6gJAaGkj9?g_st=ac', available: true },
+    { id: 'sedima', label: 'Sedima', mapsUrl: 'https://maps.app.goo.gl/RzbdtDBM5q7FF9Up6?g_st=iw', available: true },
+    { id: 'camberene', label: 'Camberène', mapsUrl: null, available: false },
+  ] as const
+
   const [customerInfo, setCustomerInfo] = useState({
     full_name: '',
     phone: '',
-    email: ''
+    email: '',
+    pickup_location: '',
   })
   const [showForm, setShowForm] = useState(false)
 
@@ -68,6 +75,7 @@ export default function TripDetailsPage() {
         full_name: customerInfo.full_name,
         phone: customerInfo.phone,
         email: customerInfo.email || undefined,
+        pickup_location: customerInfo.pickup_location || undefined,
       })
 
       if (response.data.success) {
@@ -304,6 +312,62 @@ export default function TripDetailsPage() {
                           />
                         </div>
                       )}
+                      <div>
+                        <label className="block text-xs font-medium text-txt-secondary mb-1.5">
+                          Pickup Location <span className="text-[rgb(var(--danger))]" aria-hidden>*</span>
+                        </label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {PICKUP_LOCATIONS.map((loc) => (
+                            <button
+                              key={loc.id}
+                              type="button"
+                              disabled={!loc.available}
+                              onClick={() => loc.available && setCustomerInfo({ ...customerInfo, pickup_location: loc.label })}
+                              className={`relative flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
+                                customerInfo.pickup_location === loc.label
+                                  ? 'border-accent bg-[rgba(var(--accent),0.1)] text-txt-primary'
+                                  : loc.available
+                                  ? 'border-subtle bg-[rgba(255,255,255,0.02)] text-txt-secondary hover:border-[rgba(var(--accent),0.4)] hover:bg-[rgba(var(--accent),0.04)]'
+                                  : 'border-subtle bg-[rgba(255,255,255,0.01)] text-txt-muted opacity-50 cursor-not-allowed'
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                                customerInfo.pickup_location === loc.label ? 'border-accent' : 'border-[rgba(255,255,255,0.2)]'
+                              }`}>
+                                {customerInfo.pickup_location === loc.label && (
+                                  <div className="w-2 h-2 rounded-full bg-accent" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-sm font-medium">{loc.label}</span>
+                                {!loc.available && (
+                                  <span className="ml-2 text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-[rgba(var(--warning),0.15)] text-[rgb(var(--warning))]">
+                                    Coming Soon
+                                  </span>
+                                )}
+                              </div>
+                              {loc.available && loc.mapsUrl && (
+                                <a
+                                  href={loc.mapsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex-shrink-0 text-txt-muted hover:text-accent transition-colors"
+                                  title="View on map"
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                </a>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        {!customerInfo.pickup_location && (
+                          <p className="mt-1.5 text-xs text-[rgb(var(--danger))] opacity-0 pointer-events-none select-none" aria-hidden>required</p>
+                        )}
+                      </div>
                       <div className="flex gap-3 pt-2">
                         <Button
                           type="button"
@@ -316,6 +380,7 @@ export default function TripDetailsPage() {
                         <Button
                           type="submit"
                           loading={bookingLoading}
+                          disabled={!customerInfo.pickup_location}
                           className="flex-1"
                         >
                           Proceed to Payment

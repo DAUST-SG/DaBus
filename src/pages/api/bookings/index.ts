@@ -52,12 +52,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return sendError(res, 400, "Email is required for guest bookings");
       }
 
-      const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string; email?: string } }>("bookings:create", {
+      const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string; email?: string; pickup_location?: string } }>("bookings:create", {
         sessionToken: token || undefined,
         trip_id: String(req.body?.trip_id || ""),
         full_name: String(req.body?.full_name || ""),
         phone: String(req.body?.phone || ""),
         email: email || undefined,
+        pickup_location: req.body?.pickup_location ? String(req.body.pickup_location) : undefined,
       });
 
       const bookingId = String(created?.booking?.id || "");
