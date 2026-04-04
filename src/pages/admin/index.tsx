@@ -618,11 +618,18 @@ export default function AdminDashboard() {
                         {new Date(booking.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
-                            booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
-                          }`}>
-                          {booking.status}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
+                              booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
+                            }`}>
+                            {booking.status}
+                          </span>
+                          <span className={`badge ${booking.payment_status === 'paid' ? 'badge-success' :
+                              booking.payment_status === 'refunded' ? 'badge-warning' : 'badge-neutral'
+                            }`}>
+                            {booking.payment_status}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-2">
