@@ -358,32 +358,36 @@ export default function TripDetailsPage() {
                                   <div className="w-2 h-2 rounded-full bg-accent" />
                                 )}
                               </div>
-                              <div className="flex-1 min-w-0">
+                              <div className="flex-1 min-w-0 flex items-center gap-1.5">
                                 <span className="text-sm font-medium">{loc.label}</span>
                                 {!loc.available && (
-                                  <span className="ml-2 text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-[rgba(var(--warning),0.15)] text-[rgb(var(--warning))]">
-                                    Coming Soon
-                                  </span>
+                                  <svg className="w-3.5 h-3.5 text-txt-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                  </svg>
                                 )}
                               </div>
                               {loc.available && loc.mapsUrl && (
-                                <div className="flex-shrink-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex-shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                                   <button
                                     type="button"
                                     onClick={() => setMapPreviewId(mapPreviewId === loc.id ? null : loc.id)}
-                                    className={`text-[11px] font-medium px-2 py-0.5 rounded-lg border transition-all ${
+                                    className={`p-1 rounded-lg transition-colors ${
                                       mapPreviewId === loc.id
-                                        ? 'border-accent text-accent bg-[rgba(var(--accent),0.1)]'
-                                        : 'border-subtle text-txt-muted hover:border-accent hover:text-accent'
+                                        ? 'text-accent bg-[rgba(var(--accent),0.12)]'
+                                        : 'text-txt-muted hover:text-accent'
                                     }`}
+                                    title={mapPreviewId === loc.id ? 'Hide map' : 'Preview map'}
                                   >
-                                    {mapPreviewId === loc.id ? 'Hide' : 'Map'}
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
                                   </button>
                                   <a
                                     href={loc.mapsUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-txt-muted hover:text-accent transition-colors"
+                                    className="p-1 text-txt-muted hover:text-accent transition-colors rounded-lg"
                                     title="Open in Google Maps"
                                   >
                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
