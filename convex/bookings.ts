@@ -34,6 +34,7 @@ export const create = mutation({
     full_name: v.string(),
     phone: v.string(),
     email: v.optional(v.string()),
+    pickup_location: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (!args.full_name.trim() || !args.phone.trim()) {
@@ -71,6 +72,7 @@ export const create = mutation({
       full_name: args.full_name.trim(),
       phone: args.phone.trim(),
       email: args.email?.trim(),
+      pickup_location: args.pickup_location?.trim(),
       created_at: timestamp,
       updated_at: timestamp,
     });

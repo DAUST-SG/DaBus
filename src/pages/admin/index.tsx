@@ -34,6 +34,11 @@ export default function AdminDashboard() {
   })
   const [creatingTrip, setCreatingTrip] = useState(false)
 
+  // Export modal state
+  const [showExport, setShowExport] = useState(false)
+  const [exportTripId, setExportTripId] = useState('all')
+  const [exportingBookings, setExportingBookings] = useState(false)
+
   // Add Admin modal state
   const [showAddAdmin, setShowAddAdmin] = useState(false)
   const [newAdmin, setNewAdmin] = useState({ email: '', full_name: '', phone: '', password: '' })
@@ -138,6 +143,30 @@ export default function AdminDashboard() {
       link.remove()
     } catch {
       alert('Failed to export')
+    }
+  }
+
+  const handleExportBookings = async () => {
+    setExportingBookings(true)
+    try {
+      const params = new URLSearchParams({ paid_only: 'true' })
+      if (exportTripId !== 'all') params.set('trip_id', exportTripId)
+      const response = await api.get<Blob>(`/admin/export/bookings?${params.toString()}`, { responseType: 'blob' })
+      const tripLabel = exportTripId !== 'all'
+        ? allTrips.find((t) => t.id === exportTripId)?.departure_date || exportTripId
+        : 'all'
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `bookings_${tripLabel}_paid.csv`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setShowExport(false)
+    } catch {
+      alert('Failed to export bookings')
+    } finally {
+      setExportingBookings(false)
     }
   }
 
@@ -338,7 +367,7 @@ export default function AdminDashboard() {
               </svg>
               Trips
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => handleExport('bookings')}>
+            <Button variant="ghost" size="sm" onClick={() => { setExportTripId('all'); setShowExport(true) }}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
@@ -547,6 +576,7 @@ export default function AdminDashboard() {
                     <th className="px-6 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Trip</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Passenger</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Phone</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Pickup</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Booked</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Status</th>
                     <th className="px-6 py-3 text-right text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Action</th>
@@ -571,15 +601,40 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-4 py-3.5 text-sm text-txt-primary">{booking.full_name || 'Unknown'}</td>
                       <td className="px-4 py-3.5 text-sm text-txt-secondary font-mono">{booking.phone || '-'}</td>
+                      <td className="px-4 py-3.5 text-sm">
+                        {booking.pickup_location ? (
+                          <span className="inline-flex items-center gap-1 text-txt-secondary">
+                            <svg className="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            {booking.pickup_location}
+                          </span>
+                        ) : (
+                          <span className="text-txt-muted">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3.5 text-sm text-txt-muted">
                         {new Date(booking.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
-                            booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
+                        <div className="flex flex-col gap-1.5">
+                          <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
+                              booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
+                            }`}>
+                            {booking.status}
+                          </span>
+                          <span className={`text-xs flex items-center gap-1 ${
+                            booking.payment_status === 'paid' ? 'text-[rgb(var(--success))]' :
+                            booking.payment_status === 'refunded' ? 'text-[rgb(var(--warning))]' : 'text-txt-muted'
                           }`}>
-                          {booking.status}
-                        </span>
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                              booking.payment_status === 'paid' ? 'bg-[rgb(var(--success))]' :
+                              booking.payment_status === 'refunded' ? 'bg-[rgb(var(--warning))]' : 'bg-[rgba(255,255,255,0.2)]'
+                            }`} />
+                            {booking.payment_status}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -617,6 +672,51 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+
+        {/* Export Bookings Modal */}
+        {showExport && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExport(false)} />
+            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
+              <h2 className="font-display text-xl font-bold text-txt-primary mb-1">Export Bookings</h2>
+              <p className="text-sm text-txt-muted mb-5">Only paid, non-cancelled bookings will be included.</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Filter by Shuttle</label>
+                  <select
+                    className="input-dark"
+                    value={exportTripId}
+                    onChange={(e) => setExportTripId(e.target.value)}
+                  >
+                    <option value="all">All shuttles</option>
+                    {allTrips.filter((t) => t.status !== 'archived').map((trip) => (
+                      <option key={trip.id} value={trip.id}>
+                        {trip.origin} → {trip.destination} &mdash; {new Date(trip.departure_date).toLocaleDateString()} {trip.departure_time}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-xl border border-[rgba(var(--success),0.25)] bg-[rgba(var(--success),0.06)] px-4 py-3 text-sm text-[rgb(var(--success))] flex items-start gap-2">
+                  <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Includes only <strong>paid</strong> bookings. Cancelled and pending/unpaid bookings are excluded.</span>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowExport(false)}>
+                  Cancel
+                </Button>
+                <Button loading={exportingBookings} className="flex-1" onClick={handleExportBookings}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Download CSV
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Create Trip Modal */}
         {showCreateTrip && (

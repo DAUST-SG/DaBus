@@ -17,18 +17,32 @@ export default function TripDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
+  const PICKUP_LOCATIONS = [
+    { id: 'liberte6', label: 'Liberté 6', mapsUrl: 'https://maps.app.goo.gl/ccFR1yNR6gJAaGkj9?g_st=ac', embedUrl: 'https://maps.google.com/maps?q=Liberté+6,+Dakar,+Sénégal&output=embed&z=16', available: true },
+    { id: 'sedima', label: 'Sedima', mapsUrl: 'https://maps.app.goo.gl/RzbdtDBM5q7FF9Up6?g_st=iw', embedUrl: 'https://maps.google.com/maps?q=Sedima,+Dakar,+Sénégal&output=embed&z=15', available: true },
+    { id: 'camberene', label: 'Camberène', mapsUrl: null, embedUrl: null, available: false },
+  ]
+
   const [customerInfo, setCustomerInfo] = useState({
     full_name: '',
     phone: '',
-    email: ''
+    email: '',
+    pickup_location: '',
   })
   const [showForm, setShowForm] = useState(false)
+  const [mapPreviewId, setMapPreviewId] = useState<string | null>(null)
+  const [confirmedPickup, setConfirmedPickup] = useState<string | null>(null)
 
   // Handle payment result query params
   useEffect(() => {
     if (!router.isReady) return
     const { payment } = router.query
     if (payment === 'success') {
+      const savedPickup = sessionStorage.getItem(`dabus_pickup_${id}`)
+      if (savedPickup) {
+        setConfirmedPickup(savedPickup)
+        sessionStorage.removeItem(`dabus_pickup_${id}`)
+      }
       setSuccess('Payment successful! Your booking is confirmed.')
     } else if (payment === 'error') {
       setError('Payment failed or was cancelled. Please try again.')
@@ -68,12 +82,17 @@ export default function TripDetailsPage() {
         full_name: customerInfo.full_name,
         phone: customerInfo.phone,
         email: customerInfo.email || undefined,
+        pickup_location: customerInfo.pickup_location || undefined,
       })
 
       if (response.data.success) {
         if (response.data.data.payment?.checkout_url) {
+          if (customerInfo.pickup_location) {
+            sessionStorage.setItem(`dabus_pickup_${id}`, customerInfo.pickup_location)
+          }
           window.location.href = response.data.data.payment.checkout_url
         } else {
+          setConfirmedPickup(customerInfo.pickup_location || null)
           setSuccess('Booking created successfully!')
           setShowForm(false)
         }
@@ -225,7 +244,16 @@ export default function TripDetailsPage() {
             )}
             {success && (
               <div className="px-4 py-3 rounded-xl bg-[rgba(var(--success),0.1)] border border-[rgba(var(--success),0.2)] text-[rgb(var(--success))] text-sm animate-slide-down">
-                {success}
+                <p className="font-medium">{success}</p>
+                {confirmedPickup && (
+                  <p className="mt-1 text-xs opacity-80 flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Pickup point: <span className="font-semibold ml-0.5">{confirmedPickup}</span>
+                  </p>
+                )}
               </div>
             )}
 
@@ -304,6 +332,96 @@ export default function TripDetailsPage() {
                           />
                         </div>
                       )}
+                      <div>
+                        <label className="block text-xs font-medium text-txt-secondary mb-1.5">
+                          Pickup Location <span className="text-[rgb(var(--danger))]" aria-hidden>*</span>
+                        </label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {PICKUP_LOCATIONS.map((loc) => (
+                            <button
+                              key={loc.id}
+                              type="button"
+                              disabled={!loc.available}
+                              onClick={() => loc.available && setCustomerInfo({ ...customerInfo, pickup_location: loc.label })}
+                              className={`relative flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
+                                customerInfo.pickup_location === loc.label
+                                  ? 'border-accent bg-[rgba(var(--accent),0.1)] text-txt-primary'
+                                  : loc.available
+                                  ? 'border-subtle bg-[rgba(255,255,255,0.02)] text-txt-secondary hover:border-[rgba(var(--accent),0.4)] hover:bg-[rgba(var(--accent),0.04)]'
+                                  : 'border-subtle bg-[rgba(255,255,255,0.01)] text-txt-muted opacity-50 cursor-not-allowed'
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                                customerInfo.pickup_location === loc.label ? 'border-accent' : 'border-[rgba(255,255,255,0.2)]'
+                              }`}>
+                                {customerInfo.pickup_location === loc.label && (
+                                  <div className="w-2 h-2 rounded-full bg-accent" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                                <span className="text-sm font-medium">{loc.label}</span>
+                                {!loc.available && (
+                                  <svg className="w-3.5 h-3.5 text-txt-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                  </svg>
+                                )}
+                              </div>
+                              {loc.available && loc.mapsUrl && (
+                                <div className="flex-shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setMapPreviewId(mapPreviewId === loc.id ? null : loc.id)}
+                                    className={`p-1 rounded-lg transition-colors ${
+                                      mapPreviewId === loc.id
+                                        ? 'text-accent bg-[rgba(var(--accent),0.12)]'
+                                        : 'text-txt-muted hover:text-accent'
+                                    }`}
+                                    title={mapPreviewId === loc.id ? 'Hide map' : 'Preview map'}
+                                  >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                  </button>
+                                  <a
+                                    href={loc.mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 text-txt-muted hover:text-accent transition-colors rounded-lg"
+                                    title="Open in Google Maps"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        {!customerInfo.pickup_location && (
+                          <p className="mt-1.5 text-xs text-[rgb(var(--danger))] opacity-0 pointer-events-none select-none" aria-hidden>required</p>
+                        )}
+                        {(() => {
+                          if (!mapPreviewId) return null
+                          const previewLoc = PICKUP_LOCATIONS.find(l => l.id === mapPreviewId)
+                          if (!previewLoc?.embedUrl) return null
+                          return (
+                            <div className="mt-2 rounded-xl overflow-hidden border border-subtle">
+                              <iframe
+                                src={previewLoc.embedUrl}
+                                width="100%"
+                                height="220"
+                                style={{ border: 0, display: 'block' }}
+                                allowFullScreen
+                                loading="lazy"
+                                referrerPolicy="no-referrer-when-downgrade"
+                                title={`Map of ${previewLoc.label}`}
+                              />
+                            </div>
+                          )
+                        })()}
+                      </div>
                       <div className="flex gap-3 pt-2">
                         <Button
                           type="button"
@@ -316,6 +434,7 @@ export default function TripDetailsPage() {
                         <Button
                           type="submit"
                           loading={bookingLoading}
+                          disabled={!customerInfo.pickup_location}
                           className="flex-1"
                         >
                           Proceed to Payment

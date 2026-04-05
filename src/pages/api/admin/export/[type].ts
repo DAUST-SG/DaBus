@@ -34,18 +34,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (type === "bookings") {
+      const tripIdFilter = req.query.trip_id ? String(req.query.trip_id) : null;
+      const paidOnly = req.query.paid_only === "true";
+
       const bookings = await convexQuery<Array<Record<string, unknown>>>("admin:listBookings", {
         sessionToken: token,
         limit: 5000,
       });
-      const simplified = bookings.map((b: any) => {
+
+      const filtered = bookings.filter((b: any) => {
+        if (b.status === "cancelled") return false;
+        if (paidOnly && b.payment_status !== "paid") return false;
+        if (tripIdFilter && String(b.trip_id) !== tripIdFilter) return false;
+        return true;
+      });
+
+      const simplified = filtered.map((b: any) => {
         const parts = String(b.full_name || "").trim().split(/\s+/);
         const firstName = parts[0] || "";
         const lastName = parts.slice(1).join(" ") || "";
         return {
           first_name: firstName,
           last_name: lastName,
+          phone: b.phone || "",
+          pickup_location: b.pickup_location || "",
           payment_status: b.payment_status,
+          booking_status: b.status,
           email: b.email || "",
         };
       });
