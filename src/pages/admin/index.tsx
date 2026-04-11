@@ -21,6 +21,9 @@ export default function AdminDashboard() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
   const [refundingId, setRefundingId] = useState<string | null>(null)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const [syncingAll, setSyncingAll] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateTrip, setShowCreateTrip] = useState(false)
@@ -182,6 +185,49 @@ export default function AdminDashboard() {
       alert('Failed to archive trip')
     } finally {
       setArchivingId(null)
+    }
+  }
+
+  const handleSyncBooking = async (bookingId: string) => {
+    try {
+      setSyncMessage(null)
+      setSyncingId(bookingId)
+      const response = await api.post<{ success: boolean; data: { changed: boolean; remoteStatus?: string } }>(`/admin/bookings/${bookingId}/sync`)
+      if (response.data.success) {
+        const { changed, remoteStatus } = response.data.data
+        setSyncMessage(
+          changed
+            ? `Booking updated from Naboopay (status: ${remoteStatus || 'unknown'})`
+            : `Already in sync with Naboopay (status: ${remoteStatus || 'unknown'})`,
+        )
+        fetchDashboardData()
+      }
+    } catch (err: unknown) {
+      const errorMessage = typeof err === 'object' && err && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to sync booking'
+      setSyncMessage(`Sync failed: ${errorMessage}`)
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  const handleSyncAll = async () => {
+    if (!confirm('Sync all eligible bookings with Naboopay? This may take a moment.')) return
+    try {
+      setSyncMessage(null)
+      setSyncingAll(true)
+      const response = await api.post<{ success: boolean; data: { total: number; updated: number; unchanged: number; errors: number } }>(`/admin/bookings/sync-all`)
+      if (response.data.success) {
+        const { total, updated, unchanged, errors } = response.data.data
+        setSyncMessage(`Synced ${total} bookings — ${updated} updated, ${unchanged} unchanged, ${errors} errors`)
+        fetchDashboardData()
+      }
+    } catch (err: unknown) {
+      const errorMessage = typeof err === 'object' && err && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to sync bookings'
+      setSyncMessage(`Sync failed: ${errorMessage}`)
+    } finally {
+      setSyncingAll(false)
     }
   }
 
@@ -538,7 +584,34 @@ export default function AdminDashboard() {
 
         {/* Registrations Table */}
         <div className="glass rounded-2xl p-6">
-          <h2 className="font-display font-bold text-txt-primary mb-4">Trip Registrations</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2 className="font-display font-bold text-txt-primary">Trip Registrations</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              loading={syncingAll}
+              onClick={handleSyncAll}
+              title="Query Naboopay for the latest payment status of every booking"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Sync from Naboopay
+            </Button>
+          </div>
+          {syncMessage && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--info),0.08)] border border-[rgba(var(--info),0.2)] text-[rgb(var(--info))] text-sm flex items-start justify-between gap-3">
+              <span>{syncMessage}</span>
+              <button
+                type="button"
+                onClick={() => setSyncMessage(null)}
+                className="text-txt-muted hover:text-txt-primary"
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
           <div className="flex flex-col md:flex-row gap-3 mb-5">
             <select
               className="input-dark md:w-80"
@@ -648,6 +721,20 @@ export default function AdminDashboard() {
                               Confirm
                             </Button>
                           )}
+                          {booking.payment_id && booking.status !== 'completed' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={syncingId === booking.id}
+                              onClick={() => handleSyncBooking(booking.id)}
+                              title="Query Naboopay for the latest payment status"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Sync
+                            </Button>
+                          )}
                           {booking.payment_status === 'paid' && booking.status !== 'cancelled' && (
                             <Button
                               variant="ghost"
@@ -660,7 +747,7 @@ export default function AdminDashboard() {
                               Refund
                             </Button>
                           )}
-                          {booking.status !== 'pending' && booking.payment_status !== 'paid' && (
+                          {booking.status !== 'pending' && booking.payment_status !== 'paid' && !booking.payment_id && (
                             <span className="text-txt-muted text-xs">&mdash;</span>
                           )}
                         </div>
