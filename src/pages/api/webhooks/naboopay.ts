@@ -20,6 +20,9 @@ const readSignature = (req: NextApiRequest) => {
     "x-webhook-signature",
     "x-naboopay-signature",
     "signature",
+    "x-naboo-signature",
+    "naboopay-signature",
+    "naboo-signature",
   ] as const;
 
   for (const key of headerKeys) {
