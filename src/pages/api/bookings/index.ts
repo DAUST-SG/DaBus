@@ -47,11 +47,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const token = getBearerToken(req);
       const email = String(req.body?.email || "").trim();
 
-      // Guest bookings require an email
-      if (!token && !email) {
-        return sendError(res, 400, "Email is required for guest bookings");
-      }
-
       const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string; email?: string; pickup_location?: string } }>("bookings:create", {
         sessionToken: token || undefined,
         trip_id: String(req.body?.trip_id || ""),

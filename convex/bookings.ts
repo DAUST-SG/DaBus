@@ -71,11 +71,6 @@ export const create = mutation({
       throw new ConvexError({ status: 400, message: "No seats available" });
     }
 
-    // Guest bookings require an email
-    if (!user && !args.email?.trim()) {
-      throw new ConvexError({ status: 400, message: "Email is required for guest bookings" });
-    }
-
     const pickup_location = await resolveCheckpoint(ctx, trip.origin, args.pickup_location, "pickup");
     const dropoff_location = await resolveCheckpoint(ctx, trip.destination, args.dropoff_location, "drop-off");
 

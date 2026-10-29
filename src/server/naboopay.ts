@@ -54,7 +54,8 @@ export const createNaboopayTransaction = async (
       ],
       customer: {
         name: input.customer.name,
-        email: input.customer.email,
+        // Email is optional for guests; leave it out rather than send ""
+        email: input.customer.email || undefined,
         phone: input.customer.phone,
       },
       success_url: input.successUrl,

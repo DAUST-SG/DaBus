@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
+import Link from 'next/link'
 import api from '@/lib/api'
 import Button from '@/components/Button'
 import { useAuth } from '@/context/AuthContext'
@@ -147,15 +148,15 @@ export default function TripDetailsPage() {
 
       <div className="max-w-3xl mx-auto animate-fade-in">
         {/* Back */}
-        <button
-          onClick={() => router.back()}
+        <Link
+          href="/"
           className="inline-flex items-center gap-1.5 text-sm text-txt-muted hover:text-txt-secondary transition-colors mb-6"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Back to trips
-        </button>
+        </Link>
 
         <div className="glass rounded-3xl overflow-hidden">
           {/* Header */}
@@ -318,12 +319,11 @@ export default function TripDetailsPage() {
                       {!user && (
                         <div>
                           <label htmlFor="email" className="block text-xs font-medium text-txt-secondary mb-1.5">
-                            Email
+                            Email <span className="text-txt-muted">(optional)</span>
                           </label>
                           <input
                             type="email"
                             id="email"
-                            required
                             className="input-dark"
                             value={customerInfo.email}
                             onChange={(e) => setCustomerInfo({ ...customerInfo, email: e.target.value })}
