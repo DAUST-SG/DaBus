@@ -8,6 +8,9 @@ import {
 } from "@/server/api";
 import { convexMutation, convexQuery } from "@/server/convexClient";
 
+// "" or null from the form clears the value; a missing field leaves it unchanged
+const optionalNumber = (v: unknown) => (v === "" || v === null ? null : v === undefined ? undefined : Number(v));
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const id = String(req.query.id || "");
   if (!id) {
@@ -42,6 +45,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         departure_time: req.body?.departure_time,
         capacity: req.body?.capacity,
         price: req.body?.price,
+        min_seats: optionalNumber(req.body?.min_seats),
+        cutoff_hours: optionalNumber(req.body?.cutoff_hours),
         status: req.body?.status,
       });
       return sendSuccess(res, data);

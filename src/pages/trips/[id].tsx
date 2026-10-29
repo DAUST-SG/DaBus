@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
+import Link from 'next/link'
 import api from '@/lib/api'
 import Button from '@/components/Button'
 import { useAuth } from '@/context/AuthContext'
@@ -17,20 +18,14 @@ export default function TripDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const PICKUP_LOCATIONS = [
-    { id: 'liberte6', label: 'Liberté 6', mapsUrl: 'https://maps.app.goo.gl/ccFR1yNR6gJAaGkj9?g_st=ac', embedUrl: 'https://maps.google.com/maps?q=Liberté+6,+Dakar,+Sénégal&output=embed&z=16', available: true },
-    { id: 'sedima', label: 'Sedima', mapsUrl: 'https://maps.app.goo.gl/RzbdtDBM5q7FF9Up6?g_st=iw', embedUrl: 'https://maps.google.com/maps?q=Sedima,+Dakar,+Sénégal&output=embed&z=15', available: true },
-    { id: 'camberene', label: 'Camberène', mapsUrl: null, embedUrl: null, available: false },
-  ]
-
   const [customerInfo, setCustomerInfo] = useState({
     full_name: '',
     phone: '',
     email: '',
     pickup_location: '',
+    dropoff_location: '',
   })
   const [showForm, setShowForm] = useState(false)
-  const [mapPreviewId, setMapPreviewId] = useState<string | null>(null)
   const [confirmedPickup, setConfirmedPickup] = useState<string | null>(null)
 
   // Handle payment result query params
@@ -83,6 +78,7 @@ export default function TripDetailsPage() {
         phone: customerInfo.phone,
         email: customerInfo.email || undefined,
         pickup_location: customerInfo.pickup_location || undefined,
+        dropoff_location: customerInfo.dropoff_location || undefined,
       })
 
       if (response.data.success) {
@@ -106,6 +102,10 @@ export default function TripDetailsPage() {
       setBookingLoading(false)
     }
   }
+
+  // With a single stop the backend picks it, so the picker only shows for 2+
+  const pickupOptions = trip?.pickup_checkpoints || []
+  const dropoffOptions = trip?.dropoff_checkpoints || []
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -148,15 +148,15 @@ export default function TripDetailsPage() {
 
       <div className="max-w-3xl mx-auto animate-fade-in">
         {/* Back */}
-        <button
-          onClick={() => router.back()}
+        <Link
+          href="/"
           className="inline-flex items-center gap-1.5 text-sm text-txt-muted hover:text-txt-secondary transition-colors mb-6"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Back to trips
-        </button>
+        </Link>
 
         <div className="glass rounded-3xl overflow-hidden">
           {/* Header */}
@@ -204,13 +204,13 @@ export default function TripDetailsPage() {
           <div className="p-6 sm:p-8 space-y-6">
             {/* Stats */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-2xl bg-[rgba(255,255,255,0.03)] border border-subtle p-5">
+              <div className="rounded-2xl bg-[rgba(var(--overlay),0.03)] border border-subtle p-5">
                 <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">Price</p>
                 <p className="font-display text-2xl font-bold text-gradient">
                   {trip.price.toLocaleString()} <span className="text-sm font-body font-normal text-txt-muted">CFA</span>
                 </p>
               </div>
-              <div className="rounded-2xl bg-[rgba(255,255,255,0.03)] border border-subtle p-5">
+              <div className="rounded-2xl bg-[rgba(var(--overlay),0.03)] border border-subtle p-5">
                 <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">Available</p>
                 <p className="font-display text-2xl font-bold text-[rgb(var(--success))]">
                   {trip.available_seats} <span className="text-sm font-body font-normal text-txt-muted">/ {trip.capacity}</span>
@@ -224,7 +224,7 @@ export default function TripDetailsPage() {
                 <span>Seats booked</span>
                 <span>{trip.capacity - trip.available_seats} / {trip.capacity}</span>
               </div>
-              <div className="w-full h-2 rounded-full bg-[rgba(255,255,255,0.06)] overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-[rgba(var(--overlay),0.06)] overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${
                     fillPercent > 80
@@ -285,7 +285,7 @@ export default function TripDetailsPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="rounded-2xl bg-[rgba(255,255,255,0.02)] border border-subtle p-6 animate-scale-in">
+                  <div className="rounded-2xl bg-[rgba(var(--overlay),0.02)] border border-subtle p-6 animate-scale-in">
                     <h3 className="font-display font-bold text-lg text-txt-primary mb-4">Your Information</h3>
                     <form onSubmit={(e) => { e.preventDefault(); handleBooking(); }} className="space-y-4">
                       <div>
@@ -319,12 +319,11 @@ export default function TripDetailsPage() {
                       {!user && (
                         <div>
                           <label htmlFor="email" className="block text-xs font-medium text-txt-secondary mb-1.5">
-                            Email
+                            Email <span className="text-txt-muted">(optional)</span>
                           </label>
                           <input
                             type="email"
                             id="email"
-                            required
                             className="input-dark"
                             value={customerInfo.email}
                             onChange={(e) => setCustomerInfo({ ...customerInfo, email: e.target.value })}
@@ -332,98 +331,18 @@ export default function TripDetailsPage() {
                           />
                         </div>
                       )}
-                      {trip?.origin.toLowerCase() === 'dakar' && (
-                        <div>
-                          <label className="block text-xs font-medium text-txt-secondary mb-1.5">
-                            Pickup Location <span className="text-[rgb(var(--danger))]" aria-hidden>*</span>
-                          </label>
-                          <div className="grid grid-cols-1 gap-2">
-                            {PICKUP_LOCATIONS.map((loc) => (
-                              <button
-                                key={loc.id}
-                                type="button"
-                                disabled={!loc.available}
-                                onClick={() => loc.available && setCustomerInfo({ ...customerInfo, pickup_location: loc.label })}
-                                className={`relative flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
-                                  customerInfo.pickup_location === loc.label
-                                    ? 'border-accent bg-[rgba(var(--accent),0.1)] text-txt-primary'
-                                    : loc.available
-                                    ? 'border-subtle bg-[rgba(255,255,255,0.02)] text-txt-secondary hover:border-[rgba(var(--accent),0.4)] hover:bg-[rgba(var(--accent),0.04)]'
-                                    : 'border-subtle bg-[rgba(255,255,255,0.01)] text-txt-muted opacity-50 cursor-not-allowed'
-                                }`}
-                              >
-                                <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-                                  customerInfo.pickup_location === loc.label ? 'border-accent' : 'border-[rgba(255,255,255,0.2)]'
-                                }`}>
-                                  {customerInfo.pickup_location === loc.label && (
-                                    <div className="w-2 h-2 rounded-full bg-accent" />
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                                  <span className="text-sm font-medium">{loc.label}</span>
-                                  {!loc.available && (
-                                    <svg className="w-3.5 h-3.5 text-txt-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                    </svg>
-                                  )}
-                                </div>
-                                {loc.available && loc.mapsUrl && (
-                                  <div className="flex-shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                      type="button"
-                                      onClick={() => setMapPreviewId(mapPreviewId === loc.id ? null : loc.id)}
-                                      className={`p-1 rounded-lg transition-colors ${
-                                        mapPreviewId === loc.id
-                                          ? 'text-accent bg-[rgba(var(--accent),0.12)]'
-                                          : 'text-txt-muted hover:text-accent'
-                                      }`}
-                                      title={mapPreviewId === loc.id ? 'Hide map' : 'Preview map'}
-                                    >
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                      </svg>
-                                    </button>
-                                    <a
-                                      href={loc.mapsUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="p-1 text-txt-muted hover:text-accent transition-colors rounded-lg"
-                                      title="Open in Google Maps"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                      </svg>
-                                    </a>
-                                  </div>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                          {!customerInfo.pickup_location && (
-                            <p className="mt-1.5 text-xs text-[rgb(var(--danger))] opacity-0 pointer-events-none select-none" aria-hidden>required</p>
-                          )}
-                          {(() => {
-                            if (!mapPreviewId) return null
-                            const previewLoc = PICKUP_LOCATIONS.find(l => l.id === mapPreviewId)
-                            if (!previewLoc?.embedUrl) return null
-                            return (
-                              <div className="mt-2 rounded-xl overflow-hidden border border-subtle">
-                                <iframe
-                                  src={previewLoc.embedUrl}
-                                  width="100%"
-                                  height="220"
-                                  style={{ border: 0, display: 'block' }}
-                                  allowFullScreen
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer-when-downgrade"
-                                  title={`Map of ${previewLoc.label}`}
-                                />
-                              </div>
-                            )
-                          })()}
-                        </div>
-                      )}
+                      <StopPicker
+                        label="Pickup Location"
+                        options={pickupOptions}
+                        value={customerInfo.pickup_location}
+                        onChange={(name) => setCustomerInfo({ ...customerInfo, pickup_location: name })}
+                      />
+                      <StopPicker
+                        label="Drop-off Location"
+                        options={dropoffOptions}
+                        value={customerInfo.dropoff_location}
+                        onChange={(name) => setCustomerInfo({ ...customerInfo, dropoff_location: name })}
+                      />
                       <div className="flex gap-3 pt-2">
                         <Button
                           type="button"
@@ -436,7 +355,7 @@ export default function TripDetailsPage() {
                         <Button
                           type="submit"
                           loading={bookingLoading}
-                          disabled={trip?.origin.toLowerCase() === 'dakar' ? !customerInfo.pickup_location : false}
+                          disabled={(pickupOptions.length > 1 && !customerInfo.pickup_location) || (dropoffOptions.length > 1 && !customerInfo.dropoff_location)}
                           className="flex-1"
                         >
                           Proceed to Payment
@@ -451,5 +370,43 @@ export default function TripDetailsPage() {
         </div>
       </div>
     </>
+  )
+}
+
+function StopPicker({ label, options, value, onChange }: {
+  label: string
+  options: string[]
+  value: string
+  onChange: (name: string) => void
+}) {
+  if (options.length < 2) return null
+  return (
+    <div>
+      <label className="block text-xs font-medium text-txt-secondary mb-1.5">
+        {label} <span className="text-[rgb(var(--danger))]" aria-hidden>*</span>
+      </label>
+      <div className="grid grid-cols-1 gap-2">
+        {options.map((name) => (
+          <button
+            key={name}
+            type="button"
+            aria-pressed={value === name}
+            onClick={() => onChange(name)}
+            className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
+              value === name
+                ? 'border-accent bg-[rgba(var(--accent),0.1)] text-txt-primary'
+                : 'border-subtle bg-[rgba(var(--overlay),0.02)] text-txt-secondary hover:border-[rgba(var(--accent),0.4)] hover:bg-[rgba(var(--accent),0.04)]'
+            }`}
+          >
+            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+              value === name ? 'border-accent' : 'border-[rgba(var(--overlay),0.2)]'
+            }`}>
+              {value === name && <div className="w-2 h-2 rounded-full bg-accent" />}
+            </div>
+            <span className="text-sm font-medium">{name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

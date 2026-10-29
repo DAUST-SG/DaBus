@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import ThemeToggle from '@/components/ThemeToggle'
 
 export default function Header() {
   const { user, logout } = useAuth()
@@ -24,6 +25,7 @@ export default function Header() {
 
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-1">
+            <ThemeToggle />
             {user ? (
               <>
                 <span className="text-sm text-txt-muted px-3">
@@ -39,7 +41,7 @@ export default function Header() {
                 )}
                 <Link
                   href="/bookings"
-                  className="px-3 py-2 text-sm text-txt-secondary hover:text-txt-primary rounded-lg hover:bg-[rgba(255,255,255,0.04)] transition-all duration-200"
+                  className="px-3 py-2 text-sm text-txt-secondary hover:text-txt-primary rounded-lg hover:bg-[rgba(var(--overlay),0.04)] transition-all duration-200"
                 >
                   My Bookings
                 </Link>
@@ -61,9 +63,11 @@ export default function Header() {
           </nav>
 
           {/* Mobile Toggle */}
+          <div className="md:hidden flex items-center gap-1">
+          <ThemeToggle />
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 rounded-lg text-txt-secondary hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+            className="p-2 rounded-lg text-txt-secondary hover:bg-[rgba(var(--overlay),0.06)] transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               {mobileOpen ? (
@@ -73,6 +77,7 @@ export default function Header() {
               )}
             </svg>
           </button>
+          </div>
         </div>
 
         {/* Mobile Menu */}
@@ -93,7 +98,7 @@ export default function Header() {
                 <Link
                   href="/bookings"
                   onClick={() => setMobileOpen(false)}
-                  className="block px-3 py-2 text-sm text-txt-secondary hover:text-txt-primary rounded-lg hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+                  className="block px-3 py-2 text-sm text-txt-secondary hover:text-txt-primary rounded-lg hover:bg-[rgba(var(--overlay),0.04)] transition-colors"
                 >
                   My Bookings
                 </Link>

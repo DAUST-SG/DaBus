@@ -2,12 +2,29 @@ import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
 import { toPublicTrip } from "./lib/serializers";
+import { activeCheckpointNames } from "./checkpoints";
 import { now } from "./lib/time";
 
 const sortTrips = (a: any, b: any) => {
   const aKey = `${a.departure_date}T${a.departure_time}`;
   const bKey = `${b.departure_date}T${b.departure_time}`;
   return aKey.localeCompare(bKey);
+};
+
+
+// Both are set together, or neither (no auto-cancel). null clears them on update.
+const validateMinSeats = (minSeats: number | null | undefined, cutoffHours: number | null | undefined, capacity: number) => {
+  const hasMin = minSeats !== undefined && minSeats !== null;
+  const hasCutoff = cutoffHours !== undefined && cutoffHours !== null;
+  if (hasMin !== hasCutoff) {
+    throw new ConvexError({ status: 400, message: "Set both minimum seats and hours before departure, or neither" });
+  }
+  if (hasMin && (!Number.isInteger(minSeats) || minSeats! < 1 || minSeats! > capacity)) {
+    throw new ConvexError({ status: 400, message: "Minimum seats must be between 1 and the trip capacity" });
+  }
+  if (hasCutoff && !(cutoffHours! > 0)) {
+    throw new ConvexError({ status: 400, message: "Hours before departure must be greater than zero" });
+  }
 };
 
 export const list = query({
@@ -54,7 +71,11 @@ export const getById = query({
     if (!trip) {
       throw new ConvexError({ status: 404, message: "Trip not found" });
     }
-    return toPublicTrip(trip);
+    return {
+      ...toPublicTrip(trip),
+      pickup_checkpoints: await activeCheckpointNames(ctx, trip.origin),
+      dropoff_checkpoints: await activeCheckpointNames(ctx, trip.destination),
+    };
   },
 });
 
@@ -67,9 +88,12 @@ export const create = mutation({
     departure_time: v.string(),
     capacity: v.number(),
     price: v.number(),
+    min_seats: v.optional(v.number()),
+    cutoff_hours: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx, args.sessionToken);
+    validateMinSeats(args.min_seats, args.cutoff_hours, args.capacity);
 
     if (args.capacity <= 0) {
       throw new ConvexError({ status: 400, message: "Capacity must be greater than zero" });
@@ -87,6 +111,8 @@ export const create = mutation({
       capacity: args.capacity,
       available_seats: args.capacity,
       price: args.price,
+      min_seats: args.min_seats,
+      cutoff_hours: args.cutoff_hours,
       status: "scheduled",
       created_by: admin._id,
       created_at: timestamp,
@@ -108,6 +134,8 @@ export const update = mutation({
     departure_time: v.optional(v.string()),
     capacity: v.optional(v.number()),
     price: v.optional(v.number()),
+    min_seats: v.optional(v.union(v.number(), v.null())),
+    cutoff_hours: v.optional(v.union(v.number(), v.null())),
     status: v.optional(
       v.union(
         v.literal("scheduled"),
@@ -147,6 +175,24 @@ export const update = mutation({
       }
       patch.capacity = args.capacity;
       patch.available_seats = args.capacity - bookedSeats;
+    }
+
+    if (args.min_seats !== undefined || args.cutoff_hours !== undefined) {
+      const minSeats = args.min_seats !== undefined ? args.min_seats : trip.min_seats;
+      const cutoffHours = args.cutoff_hours !== undefined ? args.cutoff_hours : trip.cutoff_hours;
+      validateMinSeats(minSeats, cutoffHours, (patch.capacity as number | undefined) ?? trip.capacity);
+      patch.min_seats = minSeats ?? undefined;
+      patch.cutoff_hours = cutoffHours ?? undefined;
+    }
+
+    // Any change to the rule or the departure means the trip should be checked again
+    if (
+      args.min_seats !== undefined ||
+      args.cutoff_hours !== undefined ||
+      args.departure_date !== undefined ||
+      args.departure_time !== undefined
+    ) {
+      patch.min_seats_checked_at = undefined;
     }
 
     await ctx.db.patch(args.tripId, patch);

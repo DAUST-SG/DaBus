@@ -6,20 +6,42 @@ import { useAuth } from '@/context/AuthContext'
 import Button from '@/components/Button'
 import DatePicker from '@/components/DatePicker'
 import TimePicker from '@/components/TimePicker'
-import { DashboardStats, Trip, Booking } from '@/types'
+import { DashboardStats, Trip, Booking, Checkpoint } from '@/types'
+
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'trips', label: 'Trips' },
+  { id: 'bookings', label: 'Bookings' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'settings', label: 'Settings' },
+] as const
+type Tab = (typeof TABS)[number]['id']
+
+const EMPTY_TRIP = {
+  origin: '',
+  destination: '',
+  departure_date: '',
+  departure_time: '',
+  capacity: 50,
+  price: null as number | null,
+  // Optional auto-cancel rule; both set or both empty
+  min_seats: null as number | null,
+  cutoff_hours: null as number | null,
+}
 
 export default function AdminDashboard() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [allTrips, setAllTrips] = useState<Trip[]>([])
-  const [recentTrips, setRecentTrips] = useState<Trip[]>([])
+  const [tab, setTab] = useState<Tab>('overview')
+  const [showArchived, setShowArchived] = useState(false)
   const [recentBookings, setRecentBookings] = useState<Booking[]>([])
   const [allBookings, setAllBookings] = useState<Booking[]>([])
   const [selectedTripId, setSelectedTripId] = useState('all')
   const [registrationQuery, setRegistrationQuery] = useState('')
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
-  const [archivingId, setArchivingId] = useState<string | null>(null)
+  const [updatingTripId, setUpdatingTripId] = useState<string | null>(null)
   const [refundingId, setRefundingId] = useState<string | null>(null)
   const [syncingId, setSyncingId] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
@@ -27,14 +49,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateTrip, setShowCreateTrip] = useState(false)
-  const [newTrip, setNewTrip] = useState({
-    origin: '',
-    destination: '',
-    departure_date: '',
-    departure_time: '',
-    capacity: 50,
-    price: null as number | null,
-  })
+  const [newTrip, setNewTrip] = useState(EMPTY_TRIP)
+  // Set when the trip modal is editing an existing trip instead of creating one
+  const [editingTripId, setEditingTripId] = useState<string | null>(null)
   const [creatingTrip, setCreatingTrip] = useState(false)
 
   // Export modal state
@@ -56,6 +73,13 @@ export default function AdminDashboard() {
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
   const [changePasswordSuccess, setChangePasswordSuccess] = useState(false)
 
+  // Checkpoints
+  const [showCheckpoints, setShowCheckpoints] = useState(false)
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
+  const [newCheckpoint, setNewCheckpoint] = useState({ name: '', city: '' })
+  const [savingCheckpoint, setSavingCheckpoint] = useState(false)
+  const [checkpointError, setCheckpointError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!authLoading && (!user || user.role !== 'admin')) {
       router.push('/login')
@@ -74,14 +98,13 @@ export default function AdminDashboard() {
       const [statsRes, tripsRes, bookingsRes] = await Promise.all([
         api.get<{ success: boolean; data: DashboardStats }>('/admin/stats'),
         api.get<{ success: boolean; data: Trip[] }>('/admin/trips'),
-        api.get<{ success: boolean; data: Booking[] }>('/admin/bookings'),
+        // ponytail: loads every booking at once (the API defaults to 100); paginate if this passes a few thousand
+        api.get<{ success: boolean; data: Booking[] }>('/admin/bookings?limit=5000'),
       ])
 
       if (statsRes.data.success) setStats(statsRes.data.data)
       if (tripsRes.data.success) {
-        const trips = tripsRes.data.data || []
-        setAllTrips(trips)
-        setRecentTrips(trips.slice(0, 5))
+        setAllTrips(tripsRes.data.data || [])
       }
       if (bookingsRes.data.success) {
         const bookings = bookingsRes.data.data || []
@@ -95,6 +118,27 @@ export default function AdminDashboard() {
     }
   }
 
+  const openCreateTrip = () => {
+    setEditingTripId(null)
+    setNewTrip(EMPTY_TRIP)
+    setShowCreateTrip(true)
+  }
+
+  const openEditTrip = (trip: Trip) => {
+    setEditingTripId(trip.id)
+    setNewTrip({
+      origin: trip.origin,
+      destination: trip.destination,
+      departure_date: trip.departure_date,
+      departure_time: trip.departure_time,
+      capacity: trip.capacity,
+      price: trip.price,
+      min_seats: trip.min_seats ?? null,
+      cutoff_hours: trip.cutoff_hours ?? null,
+    })
+    setShowCreateTrip(true)
+  }
+
   const handleCreateTrip = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTrip.departure_date || !newTrip.departure_time) {
@@ -103,15 +147,19 @@ export default function AdminDashboard() {
     }
     setCreatingTrip(true)
     try {
-      const response = await api.post<{ success: boolean; data: Trip }>('/trips', newTrip)
+      const response = editingTripId
+        ? await api.put<{ success: boolean; data: Trip }>(`/trips/${editingTripId}`, newTrip)
+        : await api.post<{ success: boolean; data: Trip }>('/trips', newTrip)
       if (response.data.success) {
         setShowCreateTrip(false)
-        setNewTrip({ origin: '', destination: '', departure_date: '', departure_time: '', capacity: 50, price: null })
+        setEditingTripId(null)
+        setNewTrip(EMPTY_TRIP)
         await fetchDashboardData()
       }
     } catch (err: unknown) {
       const errorMessage = typeof err === 'object' && err && 'response' in err &&
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to create trip'
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
+        (editingTripId ? 'Failed to update trip' : 'Failed to create trip')
       alert(errorMessage)
     } finally {
       setCreatingTrip(false)
@@ -173,19 +221,39 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleArchiveTrip = async (tripId: string) => {
-    if (!confirm('Archive this trip? It will be hidden from users.')) return
+  const setTripStatus = async (tripId: string, status: 'archived' | 'cancelled', question: string) => {
+    if (!confirm(question)) return
     try {
-      setArchivingId(tripId)
-      const response = await api.put<{ success: boolean }>(`/trips/${tripId}`, { status: 'archived' })
+      setUpdatingTripId(tripId)
+      const response = await api.put<{ success: boolean }>(`/trips/${tripId}`, { status })
       if (response.data.success) {
         fetchDashboardData()
       }
     } catch (err) {
-      alert('Failed to archive trip')
+      alert(`Failed to ${status === 'archived' ? 'archive' : 'cancel'} trip`)
     } finally {
-      setArchivingId(null)
+      setUpdatingTripId(null)
     }
+  }
+
+  const handleArchiveTrip = (tripId: string) =>
+    setTripStatus(tripId, 'archived', 'Archive this trip? It will be hidden from users.')
+
+  // Cancelling doesn't refund anyone; paid bookings are refunded one by one from the Bookings tab
+  const handleCancelTrip = (trip: Trip) => {
+    const paid = allBookings.filter(
+      (b) => b.trip_id === trip.id && b.payment_status === 'paid' && b.status !== 'cancelled',
+    ).length
+    const refundNote = paid
+      ? `\n\n${paid} paid booking${paid === 1 ? ' is' : 's are'} NOT refunded automatically. Refund them from the Bookings tab.`
+      : ''
+    return setTripStatus(trip.id, 'cancelled', `Cancel ${trip.origin} → ${trip.destination}? Students can no longer book it.${refundNote}`)
+  }
+
+  const viewTripBookings = (tripId: string) => {
+    setSelectedTripId(tripId)
+    setRegistrationQuery('')
+    setTab('bookings')
   }
 
   const handleSyncBooking = async (bookingId: string) => {
@@ -312,6 +380,53 @@ export default function AdminDashboard() {
     }
   }
 
+  const apiError = (err: unknown, fallback: string) =>
+    (typeof err === 'object' && err && 'response' in err &&
+      (err as { response?: { data?: { error?: string } } }).response?.data?.error) || fallback
+
+  const openCheckpoints = async () => {
+    setShowCheckpoints(true)
+    setCheckpointError(null)
+    try {
+      const response = await api.get<{ success: boolean; data: Checkpoint[] }>('/admin/checkpoints')
+      if (response.data.success) setCheckpoints(response.data.data)
+    } catch (err) {
+      setCheckpointError(apiError(err, 'Failed to load checkpoints'))
+    }
+  }
+
+  const handleAddCheckpoint = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingCheckpoint(true)
+    setCheckpointError(null)
+    try {
+      const response = await api.post<{ success: boolean; data: Checkpoint }>('/admin/checkpoints', newCheckpoint)
+      if (response.data.success) {
+        setCheckpoints([...checkpoints, response.data.data])
+        setNewCheckpoint({ name: '', city: newCheckpoint.city })
+      }
+    } catch (err) {
+      setCheckpointError(apiError(err, 'Failed to add checkpoint'))
+    } finally {
+      setSavingCheckpoint(false)
+    }
+  }
+
+  const handleToggleCheckpoint = async (checkpoint: Checkpoint) => {
+    setCheckpointError(null)
+    try {
+      const response = await api.patch<{ success: boolean; data: Checkpoint }>('/admin/checkpoints', {
+        id: checkpoint.id,
+        active: !checkpoint.active,
+      })
+      if (response.data.success) {
+        setCheckpoints(checkpoints.map((c) => (c.id === checkpoint.id ? response.data.data : c)))
+      }
+    } catch (err) {
+      setCheckpointError(apiError(err, 'Failed to update checkpoint'))
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -347,12 +462,132 @@ export default function AdminDashboard() {
       booking.phone || '',
       booking.trip?.origin || '',
       booking.trip?.destination || '',
+      booking.pickup_location || '',
+      booking.dropoff_location || '',
     ]
       .join(' ')
       .toLowerCase()
 
     return searchable.includes(normalizedQuery)
   })
+
+  // Head count per stop for the selected trip, so the driver knows who to expect where
+  const countByStop = (key: 'pickup_location' | 'dropoff_location') =>
+    Object.entries(
+      filteredBookings
+        .filter((b) => b.status !== 'cancelled' && b[key])
+        .reduce<Record<string, number>>((acc, b) => {
+          acc[b[key] as string] = (acc[b[key] as string] || 0) + 1
+          return acc
+        }, {}),
+    ).sort((a, b) => b[1] - a[1])
+  const stopSummary = selectedTripId === 'all' ? [] : [
+    { label: 'Pickup', counts: countByStop('pickup_location') },
+    { label: 'Drop-off', counts: countByStop('dropoff_location') },
+  ].filter((group) => group.counts.length > 0)
+
+  const tripsById = new Map(allTrips.map((trip) => [trip.id, trip]))
+  const departureKey = (trip: Trip) => `${trip.departure_date}T${trip.departure_time}`
+  const formatCfa = (amount: number) => `${amount.toLocaleString()} CFA`
+  const formatDeparture = (trip: Trip) =>
+    `${new Date(trip.departure_date).toLocaleDateString()} at ${trip.departure_time}`
+  const tripBadge = (status: Trip['status']) =>
+    status === 'scheduled' ? 'badge-success' : status === 'full' ? 'badge-warning' : 'badge-neutral'
+
+  const today = new Date().toISOString().slice(0, 10)
+  const upcomingTrips = allTrips
+    .filter((trip) => trip.departure_date >= today && (trip.status === 'scheduled' || trip.status === 'full'))
+    .sort((a, b) => departureKey(a).localeCompare(departureKey(b)))
+  const tripsNewestFirst = allTrips
+    .filter((trip) => showArchived || trip.status !== 'archived')
+    .sort((a, b) => departureKey(b).localeCompare(departureKey(a)))
+
+  // Revenue = trip price × paid bookings, grouped by the trip's departure month
+  const paidSeatsByTrip = allBookings.reduce<Record<string, number>>((acc, booking) => {
+    if (booking.payment_status === 'paid') acc[booking.trip_id] = (acc[booking.trip_id] || 0) + 1
+    return acc
+  }, {})
+  const paymentCounts = allBookings.reduce<Record<string, number>>((acc, booking) => {
+    acc[booking.payment_status] = (acc[booking.payment_status] || 0) + 1
+    return acc
+  }, {})
+  const revenueByMonth = Object.entries(
+    allBookings.reduce<Record<string, { seats: number; amount: number }>>((acc, booking) => {
+      const trip = tripsById.get(booking.trip_id)
+      if (booking.payment_status !== 'paid' || !trip) return acc
+      const month = trip.departure_date.slice(0, 7)
+      acc[month] = acc[month] || { seats: 0, amount: 0 }
+      acc[month].seats += 1
+      acc[month].amount += trip.price
+      return acc
+    }, {}),
+  ).sort((a, b) => b[0].localeCompare(a[0]))
+  const revenueTrips = allTrips
+    .filter((trip) => paidSeatsByTrip[trip.id])
+    .sort((a, b) => departureKey(b).localeCompare(departureKey(a)))
+  const monthLabel = (month: string) =>
+    new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  const renderBookingStatus = (booking: Booking) => (
+    <div className="flex flex-col gap-1.5">
+      <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
+          booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
+        }`}>
+        {booking.status}
+      </span>
+      <span className={`text-xs flex items-center gap-1 ${
+        booking.payment_status === 'paid' ? 'text-[rgb(var(--success))]' :
+        booking.payment_status === 'refunded' ? 'text-[rgb(var(--warning))]' : 'text-txt-muted'
+      }`}>
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+          booking.payment_status === 'paid' ? 'bg-[rgb(var(--success))]' :
+          booking.payment_status === 'refunded' ? 'bg-[rgb(var(--warning))]' : 'bg-[rgba(var(--overlay),0.2)]'
+        }`} />
+        {booking.payment_status}
+      </span>
+    </div>
+  )
+
+  const renderBookingActions = (booking: Booking) => (
+    <>
+      {booking.status === 'pending' && (
+        <Button
+          variant="outline"
+          size="sm"
+          loading={confirmingId === booking.id}
+          onClick={() => handleConfirmBooking(booking.id)}
+        >
+          Confirm
+        </Button>
+      )}
+      {booking.payment_id && booking.status !== 'completed' && (
+        <Button
+          variant="ghost"
+          size="sm"
+          loading={syncingId === booking.id}
+          onClick={() => handleSyncBooking(booking.id)}
+          title="Query Naboopay for the latest payment status"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Sync
+        </Button>
+      )}
+      {booking.payment_status === 'paid' && booking.status !== 'cancelled' && (
+        <Button
+          variant="ghost"
+          size="sm"
+          loading={refundingId === booking.id}
+          disabled={!isDepartureMoreThan3hAway(booking.trip)}
+          onClick={() => handleRefundBooking(booking.id)}
+          title={!isDepartureMoreThan3hAway(booking.trip) ? 'Cannot refund — trip departs in less than 3 hours' : 'Refund this booking'}
+        >
+          Refund
+        </Button>
+      )}
+    </>
+  )
 
   const statCards = [
     {
@@ -404,40 +639,34 @@ export default function AdminDashboard() {
 
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex flex-wrap justify-between items-center gap-4">
+        <div className="flex justify-between items-center gap-4">
           <h1 className="font-display text-2xl font-bold text-txt-primary">Dashboard</h1>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={() => handleExport('trips')}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Trips
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setExportTripId('all'); setShowExport(true) }}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Bookings
-            </Button>
-            <Button size="sm" onClick={() => setShowCreateTrip(true)}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              New Trip
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => { setShowAddAdmin(true); setAddAdminError(null); setAddAdminSuccess(false) }}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-              Add Admin
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setShowChangePassword(true); setChangePasswordError(null); setChangePasswordSuccess(false) }}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-              </svg>
-              Password
-            </Button>
-          </div>
+          <Button size="sm" onClick={openCreateTrip}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            New Trip
+          </Button>
+        </div>
+
+        {/* Tabs scroll sideways on narrow screens instead of wrapping */}
+        <div className="flex gap-1 overflow-x-auto border-b border-subtle -mx-4 px-4 sm:mx-0 sm:px-0" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                tab === t.id
+                  ? 'border-accent text-txt-primary'
+                  : 'border-transparent text-txt-muted hover:text-txt-secondary'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {error && (
@@ -446,158 +675,218 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {statCards.map((card, i) => (
-            <div
-              key={card.label}
-              className="stat-card animate-slide-up"
-              style={{
-                animationDelay: `${i * 0.08}s`,
-                opacity: 0,
-                ['--stat-color' as string]: colorMap[card.color],
-              }}
-            >
-              <div
-                className="absolute top-0 right-0 w-24 h-24 rounded-full blur-[40px] opacity-10"
-                style={{ background: `rgb(${colorMap[card.color]})` }}
-              />
-              <div className="relative">
-                <div className="flex items-center gap-2 mb-3">
+        {tab === 'overview' && (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {statCards.map((card, i) => (
+                <div
+                  key={card.label}
+                  className="stat-card animate-slide-up"
+                  style={{
+                    animationDelay: `${i * 0.08}s`,
+                    opacity: 0,
+                    ['--stat-color' as string]: colorMap[card.color],
+                  }}
+                >
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: `rgba(${colorMap[card.color]}, 0.12)` }}
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      style={{ color: `rgb(${colorMap[card.color]})` }}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      {card.icon}
-                    </svg>
+                    className="absolute top-0 right-0 w-24 h-24 rounded-full blur-[40px] opacity-10"
+                    style={{ background: `rgb(${colorMap[card.color]})` }}
+                  />
+                  <div className="relative">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: `rgba(${colorMap[card.color]}, 0.12)` }}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          style={{ color: `rgb(${colorMap[card.color]})` }}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          {card.icon}
+                        </svg>
+                      </div>
+                    </div>
+                    <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">{card.label}</p>
+                    <p className="font-display text-xl sm:text-2xl font-bold text-txt-primary">{card.value}</p>
                   </div>
                 </div>
-                <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">{card.label}</p>
-                <p className="font-display text-2xl font-bold text-txt-primary">{card.value}</p>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Upcoming Trips */}
+              <div className="glass rounded-2xl p-4 sm:p-6">
+                <h2 className="font-display font-bold text-txt-primary mb-4">Upcoming Trips</h2>
+                {upcomingTrips.length === 0 ? (
+                  <p className="text-txt-muted text-sm">No upcoming trips</p>
+                ) : (
+                  <div className="space-y-2">
+                    {upcomingTrips.slice(0, 5).map((trip) => (
+                      <button
+                        key={trip.id}
+                        type="button"
+                        onClick={() => viewTripBookings(trip.id)}
+                        className="w-full flex justify-between items-center gap-3 p-3 rounded-xl text-left bg-[rgba(var(--overlay),0.02)] hover:bg-[rgba(var(--overlay),0.04)] transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-txt-primary truncate">
+                            {trip.origin} <span className="text-accent mx-1">&rarr;</span> {trip.destination}
+                          </p>
+                          <p className="text-xs text-txt-muted">{formatDeparture(trip)}</p>
+                        </div>
+                        <span className="text-sm font-semibold text-txt-primary whitespace-nowrap">
+                          {trip.capacity - trip.available_seats}/{trip.capacity}
+                          <span className="text-xs font-normal text-txt-muted ml-1">seats</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Bookings */}
+              <div className="glass rounded-2xl p-4 sm:p-6">
+                <h2 className="font-display font-bold text-txt-primary mb-4">Recent Bookings</h2>
+                {recentBookings.length === 0 ? (
+                  <p className="text-txt-muted text-sm">No bookings yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {recentBookings.map((booking) => (
+                      <div key={booking.id} className="flex flex-wrap justify-between items-center gap-2 p-3 rounded-xl bg-[rgba(var(--overlay),0.02)] hover:bg-[rgba(var(--overlay),0.04)] transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-txt-primary">{booking.full_name || 'Unknown'}</p>
+                          <p className="text-xs text-txt-muted">{booking.phone || 'No phone'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
+                              booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
+                            }`}>
+                            {booking.status}
+                          </span>
+                          {renderBookingActions(booking)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          ))}
-        </div>
+          </>
+        )}
 
-        {/* Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Recent Trips */}
-          <div className="glass rounded-2xl p-6">
-            <h2 className="font-display font-bold text-txt-primary mb-4">Recent Trips</h2>
-            {recentTrips.length === 0 ? (
-              <p className="text-txt-muted text-sm">No trips yet</p>
+        {tab === 'trips' && (
+          <div className="glass rounded-2xl p-4 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h2 className="font-display font-bold text-txt-primary">All Trips</h2>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-txt-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showArchived}
+                    onChange={(e) => setShowArchived(e.target.checked)}
+                  />
+                  Show archived
+                </label>
+                <Button variant="ghost" size="sm" onClick={() => handleExport('trips')}>
+                  Export CSV
+                </Button>
+              </div>
+            </div>
+            {tripsNewestFirst.length === 0 ? (
+              <p className="text-txt-muted text-sm py-6 text-center">No trips</p>
             ) : (
               <div className="space-y-2">
-                {recentTrips.map((trip) => (
-                  <div key={trip.id} className="flex justify-between items-center p-3 rounded-xl bg-[rgba(255,255,255,0.02)] hover:bg-[rgba(255,255,255,0.04)] transition-colors">
-                    <div>
-                      <p className="text-sm font-medium text-txt-primary">
-                        {trip.origin} <span className="text-accent mx-1">&rarr;</span> {trip.destination}
-                      </p>
-                      <p className="text-xs text-txt-muted">
-                        {new Date(trip.departure_date).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-[rgb(var(--warning))]">
-                        {(revenueByTrip[trip.id] || 0).toLocaleString()} CFA
-                      </span>
-                      <span className={`badge ${trip.status === 'scheduled' ? 'badge-success' :
-                          trip.status === 'full' ? 'badge-warning' :
-                            trip.status === 'archived' ? 'badge-neutral opacity-60' : 'badge-neutral'
-                        }`}>
-                        {trip.status}
-                      </span>
-                      {trip.status !== 'archived' && trip.status !== 'completed' && trip.status !== 'cancelled' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          loading={archivingId === trip.id}
-                          onClick={() => handleArchiveTrip(trip.id)}
-                        >
-                          Archive
+                {tripsNewestFirst.map((trip) => {
+                  const editable = trip.status === 'scheduled' || trip.status === 'full'
+                  return (
+                    <div key={trip.id} className="flex flex-col md:flex-row md:items-center gap-3 p-4 rounded-xl border border-subtle">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-txt-primary">
+                            {trip.origin} <span className="text-accent mx-1">&rarr;</span> {trip.destination}
+                          </p>
+                          <span className={`badge ${tripBadge(trip.status)}`}>{trip.status}</span>
+                        </div>
+                        <p className="text-xs text-txt-muted mt-1">
+                          {formatDeparture(trip)} · {formatCfa(trip.price)} per seat
+                          {trip.min_seats && trip.cutoff_hours && (
+                            <> · min {trip.min_seats} paid, checked {trip.cutoff_hours}h before</>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex gap-6 text-sm">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest text-txt-muted">Seats</p>
+                          <p className="font-semibold text-txt-primary">{trip.capacity - trip.available_seats}/{trip.capacity}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest text-txt-muted">Revenue</p>
+                          <p className="font-semibold text-[rgb(var(--warning))]">{formatCfa(revenueByTrip[trip.id] || 0)}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => viewTripBookings(trip.id)}>
+                          Bookings
                         </Button>
-                      )}
+                        {editable && (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => openEditTrip(trip)}>
+                              Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={updatingTripId === trip.id}
+                              onClick={() => handleCancelTrip(trip)}
+                            >
+                              Cancel trip
+                            </Button>
+                          </>
+                        )}
+                        {trip.status !== 'archived' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={updatingTripId === trip.id}
+                            onClick={() => handleArchiveTrip(trip.id)}
+                          >
+                            Archive
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
+        )}
 
-          {/* Recent Bookings */}
-          <div className="glass rounded-2xl p-6">
-            <h2 className="font-display font-bold text-txt-primary mb-4">Recent Bookings</h2>
-            {recentBookings.length === 0 ? (
-              <p className="text-txt-muted text-sm">No bookings yet</p>
-            ) : (
-              <div className="space-y-2">
-                {recentBookings.map((booking) => (
-                  <div key={booking.id} className="flex justify-between items-center p-3 rounded-xl bg-[rgba(255,255,255,0.02)] hover:bg-[rgba(255,255,255,0.04)] transition-colors">
-                    <div>
-                      <p className="text-sm font-medium text-txt-primary">{booking.full_name || 'Unknown'}</p>
-                      <p className="text-xs text-txt-muted">{booking.phone || 'No phone'}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
-                          booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
-                        }`}>
-                        {booking.status}
-                      </span>
-                      {booking.status === 'pending' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          loading={confirmingId === booking.id}
-                          onClick={() => handleConfirmBooking(booking.id)}
-                        >
-                          Confirm
-                        </Button>
-                      )}
-                      {booking.payment_status === 'paid' && booking.status !== 'cancelled' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          loading={refundingId === booking.id}
-                          disabled={!isDepartureMoreThan3hAway(booking.trip)}
-                          onClick={() => handleRefundBooking(booking.id)}
-                          title={!isDepartureMoreThan3hAway(booking.trip) ? 'Cannot refund — less than 3h before departure' : 'Refund'}
-                        >
-                          Refund
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Registrations Table */}
-        <div className="glass rounded-2xl p-6">
+        {tab === 'bookings' && (
+        <div className="glass rounded-2xl p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h2 className="font-display font-bold text-txt-primary">Trip Registrations</h2>
-            <Button
-              variant="outline"
-              size="sm"
-              loading={syncingAll}
-              onClick={handleSyncAll}
-              title="Query Naboopay for the latest payment status of every booking"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Sync from Naboopay
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={() => { setExportTripId(selectedTripId); setShowExport(true) }}>
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                loading={syncingAll}
+                onClick={handleSyncAll}
+                title="Query Naboopay for the latest payment status of every booking"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Sync from Naboopay
+              </Button>
+            </div>
           </div>
           {syncMessage && (
             <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--info),0.08)] border border-[rgba(var(--info),0.2)] text-[rgb(var(--info))] text-sm flex items-start justify-between gap-3">
@@ -639,10 +928,66 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {stopSummary.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+              {stopSummary.map((group) => (
+                <div key={group.label} className="rounded-xl border border-subtle p-4">
+                  <p className="text-[10px] font-semibold text-txt-muted uppercase tracking-widest mb-2">{group.label}</p>
+                  <ul className="space-y-1.5">
+                    {group.counts.map(([name, count]) => (
+                      <li key={name}>
+                        <button
+                          type="button"
+                          onClick={() => setRegistrationQuery(name)}
+                          className="w-full flex items-center justify-between text-sm text-txt-secondary hover:text-txt-primary"
+                          title={`Show passengers for ${name}`}
+                        >
+                          <span>{name}</span>
+                          <span className="font-semibold text-txt-primary">{count}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
           {filteredBookings.length === 0 ? (
             <p className="text-txt-muted text-sm py-6 text-center">No registrations found</p>
           ) : (
-            <div className="overflow-x-auto -mx-6">
+            <>
+            {/* Phones: one card per booking */}
+            <div className="md:hidden space-y-3">
+              {filteredBookings.map((booking) => (
+                <div key={booking.id} className="rounded-xl border border-subtle p-4 space-y-3">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-txt-primary">{booking.full_name || 'Unknown'}</p>
+                      {booking.phone ? (
+                        <a href={`tel:${booking.phone}`} className="text-sm text-accent font-mono">{booking.phone}</a>
+                      ) : (
+                        <p className="text-sm text-txt-muted">No phone</p>
+                      )}
+                    </div>
+                    {renderBookingStatus(booking)}
+                  </div>
+                  {booking.trip && (
+                    <p className="text-xs text-txt-muted">
+                      {booking.trip.origin} &rarr; {booking.trip.destination} · {formatDeparture(booking.trip)}
+                    </p>
+                  )}
+                  {(booking.pickup_location || booking.dropoff_location) && (
+                    <p className="text-xs text-txt-secondary">
+                      {booking.pickup_location || '—'} <span className="text-accent">&rarr;</span> {booking.dropoff_location || '—'}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">{renderBookingActions(booking)}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto -mx-6">
               <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="border-b border-subtle">
@@ -650,6 +995,7 @@ export default function AdminDashboard() {
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Passenger</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Phone</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Pickup</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Drop-off</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Booked</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Status</th>
                     <th className="px-6 py-3 text-right text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Action</th>
@@ -657,16 +1003,14 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-subtle">
                   {filteredBookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                    <tr key={booking.id} className="hover:bg-[rgba(var(--overlay),0.02)] transition-colors">
                       <td className="px-6 py-3.5">
                         {booking.trip ? (
                           <div>
                             <p className="text-sm font-medium text-txt-primary">
                               {booking.trip.origin} <span className="text-accent">&rarr;</span> {booking.trip.destination}
                             </p>
-                            <p className="text-xs text-txt-muted">
-                              {new Date(booking.trip.departure_date).toLocaleDateString()} at {booking.trip.departure_time}
-                            </p>
+                            <p className="text-xs text-txt-muted">{formatDeparture(booking.trip)}</p>
                           </div>
                         ) : (
                           <span className="text-txt-muted text-sm">Unavailable</span>
@@ -674,91 +1018,112 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-4 py-3.5 text-sm text-txt-primary">{booking.full_name || 'Unknown'}</td>
                       <td className="px-4 py-3.5 text-sm text-txt-secondary font-mono">{booking.phone || '-'}</td>
-                      <td className="px-4 py-3.5 text-sm">
-                        {booking.pickup_location ? (
-                          <span className="inline-flex items-center gap-1 text-txt-secondary">
-                            <svg className="w-3.5 h-3.5 text-accent flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            {booking.pickup_location}
-                          </span>
-                        ) : (
-                          <span className="text-txt-muted">—</span>
-                        )}
+                      <td className="px-4 py-3.5 text-sm text-txt-secondary">
+                        {booking.pickup_location || <span className="text-txt-muted">—</span>}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-txt-secondary">
+                        {booking.dropoff_location || <span className="text-txt-muted">—</span>}
                       </td>
                       <td className="px-4 py-3.5 text-sm text-txt-muted">
                         {new Date(booking.created_at).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex flex-col gap-1.5">
-                          <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
-                              booking.status === 'pending' ? 'badge-warning' : 'badge-neutral'
-                            }`}>
-                            {booking.status}
-                          </span>
-                          <span className={`text-xs flex items-center gap-1 ${
-                            booking.payment_status === 'paid' ? 'text-[rgb(var(--success))]' :
-                            booking.payment_status === 'refunded' ? 'text-[rgb(var(--warning))]' : 'text-txt-muted'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                              booking.payment_status === 'paid' ? 'bg-[rgb(var(--success))]' :
-                              booking.payment_status === 'refunded' ? 'bg-[rgb(var(--warning))]' : 'bg-[rgba(255,255,255,0.2)]'
-                            }`} />
-                            {booking.payment_status}
-                          </span>
-                        </div>
-                      </td>
+                      <td className="px-4 py-3.5">{renderBookingStatus(booking)}</td>
                       <td className="px-6 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {booking.status === 'pending' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              loading={confirmingId === booking.id}
-                              onClick={() => handleConfirmBooking(booking.id)}
-                            >
-                              Confirm
-                            </Button>
-                          )}
-                          {booking.payment_id && booking.status !== 'completed' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              loading={syncingId === booking.id}
-                              onClick={() => handleSyncBooking(booking.id)}
-                              title="Query Naboopay for the latest payment status"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                              Sync
-                            </Button>
-                          )}
-                          {booking.payment_status === 'paid' && booking.status !== 'cancelled' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              loading={refundingId === booking.id}
-                              disabled={!isDepartureMoreThan3hAway(booking.trip)}
-                              onClick={() => handleRefundBooking(booking.id)}
-                              title={!isDepartureMoreThan3hAway(booking.trip) ? 'Cannot refund — trip departs in less than 3 hours' : 'Refund this booking'}
-                            >
-                              Refund
-                            </Button>
-                          )}
-                          {booking.status !== 'pending' && booking.payment_status !== 'paid' && !booking.payment_id && (
-                            <span className="text-txt-muted text-xs">&mdash;</span>
-                          )}
-                        </div>
+                        <div className="flex items-center justify-end gap-2">{renderBookingActions(booking)}</div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
+        )}
+
+        {tab === 'revenue' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Paid revenue', value: formatCfa(stats?.totalRevenue || 0) },
+                { label: 'Paid bookings', value: paymentCounts.paid || 0 },
+                { label: 'Pending payment', value: paymentCounts.pending || 0 },
+                { label: 'Refunded', value: paymentCounts.refunded || 0 },
+              ].map((item) => (
+                <div key={item.label} className="glass rounded-2xl p-4">
+                  <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">{item.label}</p>
+                  <p className="font-display text-xl font-bold text-txt-primary">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="glass rounded-2xl p-4 sm:p-6">
+                <h2 className="font-display font-bold text-txt-primary mb-4">By month</h2>
+                {revenueByMonth.length === 0 ? (
+                  <p className="text-txt-muted text-sm">No paid bookings yet</p>
+                ) : (
+                  <ul className="divide-y divide-subtle">
+                    {revenueByMonth.map(([month, { seats, amount }]) => (
+                      <li key={month} className="flex justify-between items-center py-2.5 text-sm">
+                        <span className="text-txt-secondary">{monthLabel(month)}</span>
+                        <span className="text-right">
+                          <span className="font-semibold text-txt-primary">{formatCfa(amount)}</span>
+                          <span className="block text-xs text-txt-muted">{seats} seat{seats === 1 ? '' : 's'}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="glass rounded-2xl p-4 sm:p-6">
+                <h2 className="font-display font-bold text-txt-primary mb-4">By trip</h2>
+                {revenueTrips.length === 0 ? (
+                  <p className="text-txt-muted text-sm">No paid bookings yet</p>
+                ) : (
+                  <ul className="divide-y divide-subtle">
+                    {revenueTrips.map((trip) => (
+                      <li key={trip.id} className="flex justify-between items-center gap-3 py-2.5 text-sm">
+                        <span className="min-w-0">
+                          <span className="block text-txt-primary truncate">{trip.origin} &rarr; {trip.destination}</span>
+                          <span className="block text-xs text-txt-muted">{formatDeparture(trip)}</span>
+                        </span>
+                        <span className="text-right whitespace-nowrap">
+                          <span className="font-semibold text-txt-primary">{formatCfa(revenueByTrip[trip.id] || 0)}</span>
+                          <span className="block text-xs text-txt-muted">{paidSeatsByTrip[trip.id]} paid</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-txt-muted">
+              Revenue is each trip&apos;s current price × its paid bookings, grouped by departure month.
+            </p>
+          </div>
+        )}
+
+        {tab === 'settings' && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { title: 'Checkpoints', text: 'Pickup and drop-off stops students choose from.', action: openCheckpoints },
+              { title: 'Add admin', text: 'Give someone access to this dashboard.', action: () => { setShowAddAdmin(true); setAddAdminError(null); setAddAdminSuccess(false) } },
+              { title: 'Password', text: 'Change your own password.', action: () => { setShowChangePassword(true); setChangePasswordError(null); setChangePasswordSuccess(false) } },
+            ].map((item) => (
+              <button
+                key={item.title}
+                type="button"
+                onClick={item.action}
+                className="glass rounded-2xl p-5 text-left hover:border-[rgba(var(--accent),0.4)] transition-colors"
+              >
+                <p className="font-display font-bold text-txt-primary mb-1">{item.title}</p>
+                <p className="text-sm text-txt-muted">{item.text}</p>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Export Bookings Modal */}
         {showExport && (
@@ -809,8 +1174,8 @@ export default function AdminDashboard() {
         {showCreateTrip && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateTrip(false)} />
-            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
-              <h2 className="font-display text-xl font-bold text-txt-primary mb-5">Create Trip</h2>
+            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in max-h-[90vh] overflow-y-auto">
+              <h2 className="font-display text-xl font-bold text-txt-primary mb-5">{editingTripId ? 'Edit Trip' : 'Create Trip'}</h2>
               <form onSubmit={handleCreateTrip} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -878,12 +1243,48 @@ export default function AdminDashboard() {
                     />
                   </div>
                 </div>
+                <div className="rounded-xl border border-subtle p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-txt-primary">Minimum seats (optional)</p>
+                    <p className="text-xs text-txt-muted">
+                      If fewer seats are paid by the deadline, the trip is cancelled, paid students are refunded and admins get an email.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-txt-secondary mb-1.5">Minimum paid seats</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max={newTrip.capacity || undefined}
+                        className="input-dark"
+                        placeholder="No minimum"
+                        value={newTrip.min_seats ?? ''}
+                        required={newTrip.cutoff_hours !== null}
+                        onChange={(e) => setNewTrip({ ...newTrip, min_seats: e.target.value ? parseInt(e.target.value) : null })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-txt-secondary mb-1.5">Hours before departure</label>
+                      <input
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        className="input-dark"
+                        placeholder="e.g. 4"
+                        value={newTrip.cutoff_hours ?? ''}
+                        required={newTrip.min_seats !== null}
+                        onChange={(e) => setNewTrip({ ...newTrip, cutoff_hours: e.target.value ? parseFloat(e.target.value) : null })}
+                      />
+                    </div>
+                  </div>
+                </div>
                 <div className="flex gap-3 pt-3">
                   <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowCreateTrip(false)}>
                     Cancel
                   </Button>
                   <Button type="submit" loading={creatingTrip} className="flex-1">
-                    Create Trip
+                    {editingTripId ? 'Save Changes' : 'Create Trip'}
                   </Button>
                 </div>
               </form>
@@ -961,6 +1362,78 @@ export default function AdminDashboard() {
                   </Button>
                   <Button type="submit" loading={addingAdmin} className="flex-1">
                     Add Admin
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Checkpoints Modal */}
+        {showCheckpoints && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCheckpoints(false)} />
+            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in max-h-[90vh] overflow-y-auto">
+              <h2 className="font-display text-xl font-bold text-txt-primary mb-1">Checkpoints</h2>
+              <p className="text-xs text-txt-muted mb-5">
+                Students pick from the active stops in the trip&apos;s origin city (pickup) and destination city (drop-off).
+              </p>
+
+              {checkpointError && (
+                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
+                  {checkpointError}
+                </div>
+              )}
+
+              {checkpoints.length === 0 ? (
+                <p className="text-txt-muted text-sm mb-5">No checkpoints yet</p>
+              ) : (
+                <ul className="divide-y divide-subtle mb-5">
+                  {checkpoints.map((checkpoint) => (
+                    <li key={checkpoint.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className={checkpoint.active ? '' : 'opacity-50'}>
+                        <p className="text-sm font-medium text-txt-primary">{checkpoint.name}</p>
+                        <p className="text-xs text-txt-muted capitalize">{checkpoint.city}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => handleToggleCheckpoint(checkpoint)}>
+                        {checkpoint.active ? 'Turn off' : 'Turn on'}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <form onSubmit={handleAddCheckpoint} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-txt-secondary mb-1.5">Name</label>
+                    <input
+                      type="text"
+                      required
+                      className="input-dark"
+                      placeholder="Liberté 6"
+                      value={newCheckpoint.name}
+                      onChange={(e) => setNewCheckpoint({ ...newCheckpoint, name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-txt-secondary mb-1.5">City</label>
+                    <input
+                      type="text"
+                      required
+                      className="input-dark"
+                      placeholder="Dakar"
+                      value={newCheckpoint.city}
+                      onChange={(e) => setNewCheckpoint({ ...newCheckpoint, city: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowCheckpoints(false)}>
+                    Close
+                  </Button>
+                  <Button type="submit" loading={savingCheckpoint} className="flex-1">
+                    Add Checkpoint
                   </Button>
                 </div>
               </form>

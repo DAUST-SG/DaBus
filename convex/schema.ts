@@ -65,6 +65,12 @@ export default defineSchema({
     price: v.number(),
     status: tripStatus,
     created_by: v.optional(v.id("users")),
+    // Auto-cancel: if fewer than min_seats are paid cutoff_hours before departure,
+    // the trip is cancelled and paid bookings refunded (see convex/minSeats.ts)
+    min_seats: v.optional(v.number()),
+    cutoff_hours: v.optional(v.number()),
+    min_seats_cancelled_at: v.optional(v.number()),
+    min_seats_checked_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
@@ -83,6 +89,7 @@ export default defineSchema({
     phone: v.optional(v.string()),
     email: v.optional(v.string()),
     pickup_location: v.optional(v.string()),
+    dropoff_location: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
@@ -92,6 +99,15 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_created_at", ["created_at"])
     .index("by_payment_id", ["payment_id"]),
+
+  // Shared pickup/drop-off stops, matched to a trip by its origin/destination city
+  checkpoints: defineTable({
+    name: v.string(),
+    city: v.string(),
+    active: v.boolean(),
+    created_at: v.number(),
+    updated_at: v.number(),
+  }).index("by_city", ["city"]),
 
   webhook_events: defineTable({
     source: v.string(),

@@ -113,7 +113,7 @@ export default function TimePicker({ value, onChange }: TimePickerProps) {
                           py-2 rounded-lg text-xs font-medium transition-all duration-150
                           ${isActive
                             ? 'bg-[rgb(var(--accent))] text-[rgb(var(--bg-primary))] font-bold shadow-lg shadow-[rgba(var(--accent),0.3)]'
-                            : 'text-[rgb(var(--text-secondary))] bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] hover:text-[rgb(var(--text-primary))]'
+                            : 'text-[rgb(var(--text-secondary))] bg-[rgba(var(--overlay),0.04)] hover:bg-[rgba(var(--overlay),0.08)] hover:text-[rgb(var(--text-primary))]'
                           }
                         `}
                       >
@@ -127,7 +127,7 @@ export default function TimePicker({ value, onChange }: TimePickerProps) {
           </div>
 
           {/* Precise time picker */}
-          <div className="border-t border-[rgba(255,255,255,0.06)] pt-3">
+          <div className="border-t border-[rgba(var(--overlay),0.06)] pt-3">
             <p className="text-[10px] font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wider mb-2">
               {step === 'hour' ? 'Select hour' : `${String(pendingHour).padStart(2, '0')}:__ \u2014 Select minutes`}
             </p>
@@ -145,7 +145,7 @@ export default function TimePicker({ value, onChange }: TimePickerProps) {
                         py-1.5 rounded-lg text-xs font-medium transition-all duration-150
                         ${isActive
                           ? 'bg-[rgba(var(--accent),0.2)] text-[rgb(var(--accent))] font-bold'
-                          : 'text-[rgb(var(--text-secondary))] hover:bg-[rgba(255,255,255,0.06)] hover:text-[rgb(var(--text-primary))]'
+                          : 'text-[rgb(var(--text-secondary))] hover:bg-[rgba(var(--overlay),0.06)] hover:text-[rgb(var(--text-primary))]'
                         }
                       `}
                     >
@@ -167,7 +167,7 @@ export default function TimePicker({ value, onChange }: TimePickerProps) {
                         py-2 rounded-lg text-sm font-medium transition-all duration-150
                         ${isActive
                           ? 'bg-[rgb(var(--accent))] text-[rgb(var(--bg-primary))] font-bold shadow-lg shadow-[rgba(var(--accent),0.3)]'
-                          : 'text-[rgb(var(--text-secondary))] bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)] hover:text-[rgb(var(--text-primary))]'
+                          : 'text-[rgb(var(--text-secondary))] bg-[rgba(var(--overlay),0.04)] hover:bg-[rgba(var(--overlay),0.08)] hover:text-[rgb(var(--text-primary))]'
                         }
                       `}
                     >

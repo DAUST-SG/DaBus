@@ -1,4 +1,5 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
 import { isFailed, isPaid } from "./lib/paymentStatus";
@@ -211,6 +212,78 @@ export const promoteUser = mutation({
   },
 });
 
+// Shared by the admin "Sync" button and the scheduled minimum-seats check
+const applyNaboopayStatus = async (
+  ctx: any,
+  args: { bookingId: Id<"bookings">; transaction_status: string },
+) => {
+  const booking = await ctx.db.get(args.bookingId);
+  if (!booking) {
+    throw new ConvexError({ status: 404, message: "Booking not found" });
+  }
+
+  const status = args.transaction_status.toLowerCase();
+  const paid = isPaid(status);
+  const failed = isFailed(status);
+
+  if (!paid && !failed) {
+    const trip = await ctx.db.get(booking.trip_id);
+    return {
+      booking: toPublicBooking(booking, trip),
+      changed: false,
+      reason: "status_not_actionable",
+      remoteStatus: status,
+    };
+  }
+
+  const previousStatus = booking.status;
+  const previousPaymentStatus = booking.payment_status;
+  const nextStatus = paid ? "confirmed" : "cancelled";
+  const nextPaymentStatus = paid
+    ? "paid"
+    : previousPaymentStatus === "paid"
+      ? "refunded"
+      : previousPaymentStatus;
+
+  if (nextStatus === previousStatus && nextPaymentStatus === previousPaymentStatus) {
+    const trip = await ctx.db.get(booking.trip_id);
+    return {
+      booking: toPublicBooking(booking, trip),
+      changed: false,
+      reason: "already_in_sync",
+      remoteStatus: status,
+    };
+  }
+
+  await ctx.db.patch(booking._id, {
+    status: nextStatus,
+    payment_status: nextPaymentStatus,
+    updated_at: now(),
+  });
+
+  if (failed && (previousStatus === "pending" || previousStatus === "confirmed")) {
+    await restoreSeat(ctx, booking);
+  }
+
+  if (paid && previousStatus === "cancelled") {
+    await consumeSeat(ctx, booking);
+  }
+
+  const updated = await ctx.db.get(booking._id);
+  if (!updated) {
+    throw new ConvexError({ status: 404, message: "Booking not found after sync" });
+  }
+  const trip = await ctx.db.get(updated.trip_id);
+  return {
+    booking: toPublicBooking(updated, trip),
+    changed: true,
+    reason: "updated",
+    remoteStatus: status,
+    previousStatus,
+    previousPaymentStatus,
+  };
+};
+
 export const syncBookingFromNaboopay = mutation({
   args: {
     sessionToken: v.optional(v.string()),
@@ -219,73 +292,16 @@ export const syncBookingFromNaboopay = mutation({
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.sessionToken);
-
-    const booking = await ctx.db.get(args.bookingId);
-    if (!booking) {
-      throw new ConvexError({ status: 404, message: "Booking not found" });
-    }
-
-    const status = args.transaction_status.toLowerCase();
-    const paid = isPaid(status);
-    const failed = isFailed(status);
-
-    if (!paid && !failed) {
-      const trip = await ctx.db.get(booking.trip_id);
-      return {
-        booking: toPublicBooking(booking, trip),
-        changed: false,
-        reason: "status_not_actionable",
-        remoteStatus: status,
-      };
-    }
-
-    const previousStatus = booking.status;
-    const previousPaymentStatus = booking.payment_status;
-    const nextStatus = paid ? "confirmed" : "cancelled";
-    const nextPaymentStatus = paid
-      ? "paid"
-      : previousPaymentStatus === "paid"
-        ? "refunded"
-        : previousPaymentStatus;
-
-    if (nextStatus === previousStatus && nextPaymentStatus === previousPaymentStatus) {
-      const trip = await ctx.db.get(booking.trip_id);
-      return {
-        booking: toPublicBooking(booking, trip),
-        changed: false,
-        reason: "already_in_sync",
-        remoteStatus: status,
-      };
-    }
-
-    await ctx.db.patch(booking._id, {
-      status: nextStatus,
-      payment_status: nextPaymentStatus,
-      updated_at: now(),
-    });
-
-    if (failed && (previousStatus === "pending" || previousStatus === "confirmed")) {
-      await restoreSeat(ctx, booking);
-    }
-
-    if (paid && previousStatus === "cancelled") {
-      await consumeSeat(ctx, booking);
-    }
-
-    const updated = await ctx.db.get(booking._id);
-    if (!updated) {
-      throw new ConvexError({ status: 404, message: "Booking not found after sync" });
-    }
-    const trip = await ctx.db.get(updated.trip_id);
-    return {
-      booking: toPublicBooking(updated, trip),
-      changed: true,
-      reason: "updated",
-      remoteStatus: status,
-      previousStatus,
-      previousPaymentStatus,
-    };
+    return applyNaboopayStatus(ctx, args);
   },
+});
+
+export const syncBookingFromNaboopayInternal = internalMutation({
+  args: {
+    bookingId: v.id("bookings"),
+    transaction_status: v.string(),
+  },
+  handler: (ctx, args) => applyNaboopayStatus(ctx, args),
 });
 
 export const listBookingsForSync = query({
