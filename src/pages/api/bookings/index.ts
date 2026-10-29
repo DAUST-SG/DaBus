@@ -59,6 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         phone: String(req.body?.phone || ""),
         email: email || undefined,
         pickup_location: req.body?.pickup_location ? String(req.body.pickup_location) : undefined,
+        dropoff_location: req.body?.dropoff_location ? String(req.body.dropoff_location) : undefined,
       });
 
       const bookingId = String(created?.booking?.id || "");

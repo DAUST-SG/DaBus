@@ -58,6 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           last_name: lastName,
           phone: b.phone || "",
           pickup_location: b.pickup_location || "",
+          dropoff_location: b.dropoff_location || "",
           payment_status: b.payment_status,
           booking_status: b.status,
           email: b.email || "",

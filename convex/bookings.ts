@@ -4,6 +4,19 @@ import { ConvexError, v } from "convex/values";
 import { getCurrentUser, requireBookingOwnerOrAdmin, requireUser } from "./lib/guards";
 import { toPublicBooking } from "./lib/serializers";
 import { now } from "./lib/time";
+import { activeCheckpointNames } from "./checkpoints";
+
+// A stop is required only when the city has some; it must be one of them
+const resolveCheckpoint = async (ctx: any, city: string, chosen: string | undefined, label: string) => {
+  const names = await activeCheckpointNames(ctx, city);
+  if (names.length === 0) return undefined;
+  if (names.length === 1 && !chosen?.trim()) return names[0];
+  const match = names.find((n) => n === chosen?.trim());
+  if (!match) {
+    throw new ConvexError({ status: 400, message: `Please choose a valid ${label} point` });
+  }
+  return match;
+};
 
 const restoreSeatIfNeeded = async (ctx: any, booking: any) => {
   const trip = await ctx.db.get(booking.trip_id);
@@ -35,6 +48,7 @@ export const create = mutation({
     phone: v.string(),
     email: v.optional(v.string()),
     pickup_location: v.optional(v.string()),
+    dropoff_location: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (!args.full_name.trim() || !args.phone.trim()) {
@@ -62,6 +76,9 @@ export const create = mutation({
       throw new ConvexError({ status: 400, message: "Email is required for guest bookings" });
     }
 
+    const pickup_location = await resolveCheckpoint(ctx, trip.origin, args.pickup_location, "pickup");
+    const dropoff_location = await resolveCheckpoint(ctx, trip.destination, args.dropoff_location, "drop-off");
+
     const timestamp = now();
 
     const bookingId = await ctx.db.insert("bookings", {
@@ -72,7 +89,8 @@ export const create = mutation({
       full_name: args.full_name.trim(),
       phone: args.phone.trim(),
       email: args.email?.trim(),
-      pickup_location: args.pickup_location?.trim(),
+      pickup_location,
+      dropoff_location,
       created_at: timestamp,
       updated_at: timestamp,
     });

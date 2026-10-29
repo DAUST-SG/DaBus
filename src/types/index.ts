@@ -20,6 +20,16 @@ export interface Trip {
   price: number
   status: 'scheduled' | 'full' | 'completed' | 'cancelled' | 'archived'
   created_at: string
+  // Only returned by GET /trips/:id
+  pickup_checkpoints?: string[]
+  dropoff_checkpoints?: string[]
+}
+
+export interface Checkpoint {
+  id: string
+  name: string
+  city: string
+  active: boolean
 }
 
 export interface Booking {
@@ -32,6 +42,7 @@ export interface Booking {
   full_name?: string
   phone?: string
   pickup_location?: string
+  dropoff_location?: string
   created_at: string
   trip?: Trip
 }

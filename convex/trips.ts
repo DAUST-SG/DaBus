@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
 import { toPublicTrip } from "./lib/serializers";
+import { activeCheckpointNames } from "./checkpoints";
 import { now } from "./lib/time";
 
 const sortTrips = (a: any, b: any) => {
@@ -54,7 +55,11 @@ export const getById = query({
     if (!trip) {
       throw new ConvexError({ status: 404, message: "Trip not found" });
     }
-    return toPublicTrip(trip);
+    return {
+      ...toPublicTrip(trip),
+      pickup_checkpoints: await activeCheckpointNames(ctx, trip.origin),
+      dropoff_checkpoints: await activeCheckpointNames(ctx, trip.destination),
+    };
   },
 });
 

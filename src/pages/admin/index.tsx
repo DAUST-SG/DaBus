@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import Button from '@/components/Button'
 import DatePicker from '@/components/DatePicker'
 import TimePicker from '@/components/TimePicker'
-import { DashboardStats, Trip, Booking } from '@/types'
+import { DashboardStats, Trip, Booking, Checkpoint } from '@/types'
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -55,6 +55,13 @@ export default function AdminDashboard() {
   const [changingPassword, setChangingPassword] = useState(false)
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
   const [changePasswordSuccess, setChangePasswordSuccess] = useState(false)
+
+  // Checkpoints
+  const [showCheckpoints, setShowCheckpoints] = useState(false)
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
+  const [newCheckpoint, setNewCheckpoint] = useState({ name: '', city: '' })
+  const [savingCheckpoint, setSavingCheckpoint] = useState(false)
+  const [checkpointError, setCheckpointError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== 'admin')) {
@@ -312,6 +319,53 @@ export default function AdminDashboard() {
     }
   }
 
+  const apiError = (err: unknown, fallback: string) =>
+    (typeof err === 'object' && err && 'response' in err &&
+      (err as { response?: { data?: { error?: string } } }).response?.data?.error) || fallback
+
+  const openCheckpoints = async () => {
+    setShowCheckpoints(true)
+    setCheckpointError(null)
+    try {
+      const response = await api.get<{ success: boolean; data: Checkpoint[] }>('/admin/checkpoints')
+      if (response.data.success) setCheckpoints(response.data.data)
+    } catch (err) {
+      setCheckpointError(apiError(err, 'Failed to load checkpoints'))
+    }
+  }
+
+  const handleAddCheckpoint = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingCheckpoint(true)
+    setCheckpointError(null)
+    try {
+      const response = await api.post<{ success: boolean; data: Checkpoint }>('/admin/checkpoints', newCheckpoint)
+      if (response.data.success) {
+        setCheckpoints([...checkpoints, response.data.data])
+        setNewCheckpoint({ name: '', city: newCheckpoint.city })
+      }
+    } catch (err) {
+      setCheckpointError(apiError(err, 'Failed to add checkpoint'))
+    } finally {
+      setSavingCheckpoint(false)
+    }
+  }
+
+  const handleToggleCheckpoint = async (checkpoint: Checkpoint) => {
+    setCheckpointError(null)
+    try {
+      const response = await api.patch<{ success: boolean; data: Checkpoint }>('/admin/checkpoints', {
+        id: checkpoint.id,
+        active: !checkpoint.active,
+      })
+      if (response.data.success) {
+        setCheckpoints(checkpoints.map((c) => (c.id === checkpoint.id ? response.data.data : c)))
+      }
+    } catch (err) {
+      setCheckpointError(apiError(err, 'Failed to update checkpoint'))
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -347,12 +401,29 @@ export default function AdminDashboard() {
       booking.phone || '',
       booking.trip?.origin || '',
       booking.trip?.destination || '',
+      booking.pickup_location || '',
+      booking.dropoff_location || '',
     ]
       .join(' ')
       .toLowerCase()
 
     return searchable.includes(normalizedQuery)
   })
+
+  // Head count per stop for the selected trip, so the driver knows who to expect where
+  const countByStop = (key: 'pickup_location' | 'dropoff_location') =>
+    Object.entries(
+      filteredBookings
+        .filter((b) => b.status !== 'cancelled' && b[key])
+        .reduce<Record<string, number>>((acc, b) => {
+          acc[b[key] as string] = (acc[b[key] as string] || 0) + 1
+          return acc
+        }, {}),
+    ).sort((a, b) => b[1] - a[1])
+  const stopSummary = selectedTripId === 'all' ? [] : [
+    { label: 'Pickup', counts: countByStop('pickup_location') },
+    { label: 'Drop-off', counts: countByStop('dropoff_location') },
+  ].filter((group) => group.counts.length > 0)
 
   const statCards = [
     {
@@ -424,6 +495,13 @@ export default function AdminDashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
               New Trip
+            </Button>
+            <Button variant="outline" size="sm" onClick={openCheckpoints}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Checkpoints
             </Button>
             <Button variant="outline" size="sm" onClick={() => { setShowAddAdmin(true); setAddAdminError(null); setAddAdminSuccess(false) }}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -639,6 +717,31 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {stopSummary.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+              {stopSummary.map((group) => (
+                <div key={group.label} className="rounded-xl border border-subtle p-4">
+                  <p className="text-[10px] font-semibold text-txt-muted uppercase tracking-widest mb-2">{group.label}</p>
+                  <ul className="space-y-1.5">
+                    {group.counts.map(([name, count]) => (
+                      <li key={name}>
+                        <button
+                          type="button"
+                          onClick={() => setRegistrationQuery(name)}
+                          className="w-full flex items-center justify-between text-sm text-txt-secondary hover:text-txt-primary"
+                          title={`Show passengers for ${name}`}
+                        >
+                          <span>{name}</span>
+                          <span className="font-semibold text-txt-primary">{count}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
           {filteredBookings.length === 0 ? (
             <p className="text-txt-muted text-sm py-6 text-center">No registrations found</p>
           ) : (
@@ -650,6 +753,7 @@ export default function AdminDashboard() {
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Passenger</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Phone</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Pickup</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Drop-off</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Booked</th>
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Status</th>
                     <th className="px-6 py-3 text-right text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Action</th>
@@ -686,6 +790,9 @@ export default function AdminDashboard() {
                         ) : (
                           <span className="text-txt-muted">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-txt-secondary">
+                        {booking.dropoff_location || <span className="text-txt-muted">—</span>}
                       </td>
                       <td className="px-4 py-3.5 text-sm text-txt-muted">
                         {new Date(booking.created_at).toLocaleDateString()}
@@ -961,6 +1068,78 @@ export default function AdminDashboard() {
                   </Button>
                   <Button type="submit" loading={addingAdmin} className="flex-1">
                     Add Admin
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Checkpoints Modal */}
+        {showCheckpoints && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCheckpoints(false)} />
+            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in max-h-[90vh] overflow-y-auto">
+              <h2 className="font-display text-xl font-bold text-txt-primary mb-1">Checkpoints</h2>
+              <p className="text-xs text-txt-muted mb-5">
+                Students pick from the active stops in the trip&apos;s origin city (pickup) and destination city (drop-off).
+              </p>
+
+              {checkpointError && (
+                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
+                  {checkpointError}
+                </div>
+              )}
+
+              {checkpoints.length === 0 ? (
+                <p className="text-txt-muted text-sm mb-5">No checkpoints yet</p>
+              ) : (
+                <ul className="divide-y divide-subtle mb-5">
+                  {checkpoints.map((checkpoint) => (
+                    <li key={checkpoint.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className={checkpoint.active ? '' : 'opacity-50'}>
+                        <p className="text-sm font-medium text-txt-primary">{checkpoint.name}</p>
+                        <p className="text-xs text-txt-muted capitalize">{checkpoint.city}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => handleToggleCheckpoint(checkpoint)}>
+                        {checkpoint.active ? 'Turn off' : 'Turn on'}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <form onSubmit={handleAddCheckpoint} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-txt-secondary mb-1.5">Name</label>
+                    <input
+                      type="text"
+                      required
+                      className="input-dark"
+                      placeholder="Liberté 6"
+                      value={newCheckpoint.name}
+                      onChange={(e) => setNewCheckpoint({ ...newCheckpoint, name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-txt-secondary mb-1.5">City</label>
+                    <input
+                      type="text"
+                      required
+                      className="input-dark"
+                      placeholder="Dakar"
+                      value={newCheckpoint.city}
+                      onChange={(e) => setNewCheckpoint({ ...newCheckpoint, city: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowCheckpoints(false)}>
+                    Close
+                  </Button>
+                  <Button type="submit" loading={savingCheckpoint} className="flex-1">
+                    Add Checkpoint
                   </Button>
                 </div>
               </form>

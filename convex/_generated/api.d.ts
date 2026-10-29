@@ -11,8 +11,10 @@
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as bookings from "../bookings.js";
+import type * as checkpoints from "../checkpoints.js";
 import type * as http from "../http.js";
 import type * as lib_guards from "../lib/guards.js";
+import type * as lib_paymentStatus from "../lib/paymentStatus.js";
 import type * as lib_serializers from "../lib/serializers.js";
 import type * as lib_time from "../lib/time.js";
 import type * as lib_validation from "../lib/validation.js";
@@ -30,8 +32,10 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
   bookings: typeof bookings;
+  checkpoints: typeof checkpoints;
   http: typeof http;
   "lib/guards": typeof lib_guards;
+  "lib/paymentStatus": typeof lib_paymentStatus;
   "lib/serializers": typeof lib_serializers;
   "lib/time": typeof lib_time;
   "lib/validation": typeof lib_validation;
