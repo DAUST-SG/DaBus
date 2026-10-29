@@ -19,6 +19,8 @@ export interface Trip {
   available_seats: number
   price: number
   status: 'scheduled' | 'full' | 'completed' | 'cancelled' | 'archived'
+  min_seats?: number
+  cutoff_hours?: number
   created_at: string
   // Only returned by GET /trips/:id
   pickup_checkpoints?: string[]

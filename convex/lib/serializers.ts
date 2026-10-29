@@ -19,6 +19,8 @@ export const toPublicTrip = (trip: any) => ({
   available_seats: trip.available_seats,
   price: trip.price,
   status: trip.status,
+  min_seats: trip.min_seats,
+  cutoff_hours: trip.cutoff_hours,
   created_at: toIso(trip.created_at),
 });
 

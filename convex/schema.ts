@@ -65,6 +65,12 @@ export default defineSchema({
     price: v.number(),
     status: tripStatus,
     created_by: v.optional(v.id("users")),
+    // Auto-cancel: if fewer than min_seats are paid cutoff_hours before departure,
+    // the trip is cancelled and paid bookings refunded (see convex/minSeats.ts)
+    min_seats: v.optional(v.number()),
+    cutoff_hours: v.optional(v.number()),
+    min_seats_cancelled_at: v.optional(v.number()),
+    min_seats_checked_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),

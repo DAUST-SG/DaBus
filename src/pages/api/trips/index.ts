@@ -38,6 +38,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         departure_time: String(req.body?.departure_time || ""),
         capacity: Number(req.body?.capacity || 0),
         price: Number(req.body?.price || 0),
+        min_seats: req.body?.min_seats ? Number(req.body.min_seats) : undefined,
+        cutoff_hours: req.body?.cutoff_hours ? Number(req.body.cutoff_hours) : undefined,
       });
       return sendSuccess(res, data);
     } catch (error) {

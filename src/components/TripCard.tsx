@@ -62,7 +62,7 @@ export default function TripCard({ trip }: TripCardProps) {
             </span>
             <span className="text-txt-muted">{trip.capacity} total</span>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-[rgba(255,255,255,0.06)] overflow-hidden">
+          <div className="w-full h-1.5 rounded-full bg-[rgba(var(--overlay),0.06)] overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 fillPercent > 80

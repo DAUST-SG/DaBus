@@ -120,7 +120,7 @@ export default function DatePicker({ value, onChange, minDate }: DatePickerProps
             <button
               type="button"
               onClick={prevMonth}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] hover:bg-[rgba(255,255,255,0.06)] transition-all"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] hover:bg-[rgba(var(--overlay),0.06)] transition-all"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -132,7 +132,7 @@ export default function DatePicker({ value, onChange, minDate }: DatePickerProps
             <button
               type="button"
               onClick={nextMonth}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] hover:bg-[rgba(255,255,255,0.06)] transition-all"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[rgb(var(--text-secondary))] hover:text-[rgb(var(--text-primary))] hover:bg-[rgba(var(--overlay),0.06)] transition-all"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -175,7 +175,7 @@ export default function DatePicker({ value, onChange, minDate }: DatePickerProps
                         ? 'bg-[rgb(var(--accent))] text-[rgb(var(--bg-primary))] font-bold shadow-lg shadow-[rgba(var(--accent),0.3)]'
                         : tod
                           ? 'text-[rgb(var(--accent))] bg-[rgba(var(--accent),0.1)] hover:bg-[rgba(var(--accent),0.2)]'
-                          : 'text-[rgb(var(--text-primary))] hover:bg-[rgba(255,255,255,0.08)]'
+                          : 'text-[rgb(var(--text-primary))] hover:bg-[rgba(var(--overlay),0.08)]'
                     }
                   `}
                 >
@@ -189,7 +189,7 @@ export default function DatePicker({ value, onChange, minDate }: DatePickerProps
           </div>
 
           {/* Quick actions */}
-          <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(255,255,255,0.06)]">
+          <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(var(--overlay),0.06)]">
             <button
               type="button"
               onClick={() => {

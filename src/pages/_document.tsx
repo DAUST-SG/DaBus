@@ -12,6 +12,12 @@ export default function Document() {
         />
       </Head>
       <body>
+        {/* Apply a saved light theme before first paint so it doesn't flash dark */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "try{if(localStorage.getItem('theme')==='light')document.documentElement.dataset.theme='light'}catch(e){}",
+          }}
+        />
         <Main />
         <NextScript />
       </body>

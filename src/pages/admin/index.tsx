@@ -24,6 +24,9 @@ const EMPTY_TRIP = {
   departure_time: '',
   capacity: 50,
   price: null as number | null,
+  // Optional auto-cancel rule; both set or both empty
+  min_seats: null as number | null,
+  cutoff_hours: null as number | null,
 }
 
 export default function AdminDashboard() {
@@ -130,6 +133,8 @@ export default function AdminDashboard() {
       departure_time: trip.departure_time,
       capacity: trip.capacity,
       price: trip.price,
+      min_seats: trip.min_seats ?? null,
+      cutoff_hours: trip.cutoff_hours ?? null,
     })
     setShowCreateTrip(true)
   }
@@ -536,7 +541,7 @@ export default function AdminDashboard() {
       }`}>
         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
           booking.payment_status === 'paid' ? 'bg-[rgb(var(--success))]' :
-          booking.payment_status === 'refunded' ? 'bg-[rgb(var(--warning))]' : 'bg-[rgba(255,255,255,0.2)]'
+          booking.payment_status === 'refunded' ? 'bg-[rgb(var(--warning))]' : 'bg-[rgba(var(--overlay),0.2)]'
         }`} />
         {booking.payment_status}
       </span>
@@ -725,7 +730,7 @@ export default function AdminDashboard() {
                         key={trip.id}
                         type="button"
                         onClick={() => viewTripBookings(trip.id)}
-                        className="w-full flex justify-between items-center gap-3 p-3 rounded-xl text-left bg-[rgba(255,255,255,0.02)] hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+                        className="w-full flex justify-between items-center gap-3 p-3 rounded-xl text-left bg-[rgba(var(--overlay),0.02)] hover:bg-[rgba(var(--overlay),0.04)] transition-colors"
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-txt-primary truncate">
@@ -751,7 +756,7 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="space-y-2">
                     {recentBookings.map((booking) => (
-                      <div key={booking.id} className="flex flex-wrap justify-between items-center gap-2 p-3 rounded-xl bg-[rgba(255,255,255,0.02)] hover:bg-[rgba(255,255,255,0.04)] transition-colors">
+                      <div key={booking.id} className="flex flex-wrap justify-between items-center gap-2 p-3 rounded-xl bg-[rgba(var(--overlay),0.02)] hover:bg-[rgba(var(--overlay),0.04)] transition-colors">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-txt-primary">{booking.full_name || 'Unknown'}</p>
                           <p className="text-xs text-txt-muted">{booking.phone || 'No phone'}</p>
@@ -808,6 +813,9 @@ export default function AdminDashboard() {
                         </div>
                         <p className="text-xs text-txt-muted mt-1">
                           {formatDeparture(trip)} · {formatCfa(trip.price)} per seat
+                          {trip.min_seats && trip.cutoff_hours && (
+                            <> · min {trip.min_seats} paid, checked {trip.cutoff_hours}h before</>
+                          )}
                         </p>
                       </div>
                       <div className="flex gap-6 text-sm">
@@ -995,7 +1003,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-subtle">
                   {filteredBookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                    <tr key={booking.id} className="hover:bg-[rgba(var(--overlay),0.02)] transition-colors">
                       <td className="px-6 py-3.5">
                         {booking.trip ? (
                           <div>
@@ -1166,7 +1174,7 @@ export default function AdminDashboard() {
         {showCreateTrip && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateTrip(false)} />
-            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
+            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in max-h-[90vh] overflow-y-auto">
               <h2 className="font-display text-xl font-bold text-txt-primary mb-5">{editingTripId ? 'Edit Trip' : 'Create Trip'}</h2>
               <form onSubmit={handleCreateTrip} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -1233,6 +1241,42 @@ export default function AdminDashboard() {
                       value={newTrip.price ?? ''}
                       onChange={(e) => setNewTrip({ ...newTrip, price: e.target.value ? parseInt(e.target.value) : null })}
                     />
+                  </div>
+                </div>
+                <div className="rounded-xl border border-subtle p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-txt-primary">Minimum seats (optional)</p>
+                    <p className="text-xs text-txt-muted">
+                      If fewer seats are paid by the deadline, the trip is cancelled, paid students are refunded and admins get an email.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-txt-secondary mb-1.5">Minimum paid seats</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max={newTrip.capacity || undefined}
+                        className="input-dark"
+                        placeholder="No minimum"
+                        value={newTrip.min_seats ?? ''}
+                        required={newTrip.cutoff_hours !== null}
+                        onChange={(e) => setNewTrip({ ...newTrip, min_seats: e.target.value ? parseInt(e.target.value) : null })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-txt-secondary mb-1.5">Hours before departure</label>
+                      <input
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        className="input-dark"
+                        placeholder="e.g. 4"
+                        value={newTrip.cutoff_hours ?? ''}
+                        required={newTrip.min_seats !== null}
+                        onChange={(e) => setNewTrip({ ...newTrip, cutoff_hours: e.target.value ? parseFloat(e.target.value) : null })}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-3 pt-3">

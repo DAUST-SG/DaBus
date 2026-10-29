@@ -204,13 +204,13 @@ export default function TripDetailsPage() {
           <div className="p-6 sm:p-8 space-y-6">
             {/* Stats */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-2xl bg-[rgba(255,255,255,0.03)] border border-subtle p-5">
+              <div className="rounded-2xl bg-[rgba(var(--overlay),0.03)] border border-subtle p-5">
                 <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">Price</p>
                 <p className="font-display text-2xl font-bold text-gradient">
                   {trip.price.toLocaleString()} <span className="text-sm font-body font-normal text-txt-muted">CFA</span>
                 </p>
               </div>
-              <div className="rounded-2xl bg-[rgba(255,255,255,0.03)] border border-subtle p-5">
+              <div className="rounded-2xl bg-[rgba(var(--overlay),0.03)] border border-subtle p-5">
                 <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">Available</p>
                 <p className="font-display text-2xl font-bold text-[rgb(var(--success))]">
                   {trip.available_seats} <span className="text-sm font-body font-normal text-txt-muted">/ {trip.capacity}</span>
@@ -224,7 +224,7 @@ export default function TripDetailsPage() {
                 <span>Seats booked</span>
                 <span>{trip.capacity - trip.available_seats} / {trip.capacity}</span>
               </div>
-              <div className="w-full h-2 rounded-full bg-[rgba(255,255,255,0.06)] overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-[rgba(var(--overlay),0.06)] overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${
                     fillPercent > 80
@@ -285,7 +285,7 @@ export default function TripDetailsPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="rounded-2xl bg-[rgba(255,255,255,0.02)] border border-subtle p-6 animate-scale-in">
+                  <div className="rounded-2xl bg-[rgba(var(--overlay),0.02)] border border-subtle p-6 animate-scale-in">
                     <h3 className="font-display font-bold text-lg text-txt-primary mb-4">Your Information</h3>
                     <form onSubmit={(e) => { e.preventDefault(); handleBooking(); }} className="space-y-4">
                       <div>
@@ -395,11 +395,11 @@ function StopPicker({ label, options, value, onChange }: {
             className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
               value === name
                 ? 'border-accent bg-[rgba(var(--accent),0.1)] text-txt-primary'
-                : 'border-subtle bg-[rgba(255,255,255,0.02)] text-txt-secondary hover:border-[rgba(var(--accent),0.4)] hover:bg-[rgba(var(--accent),0.04)]'
+                : 'border-subtle bg-[rgba(var(--overlay),0.02)] text-txt-secondary hover:border-[rgba(var(--accent),0.4)] hover:bg-[rgba(var(--accent),0.04)]'
             }`}
           >
             <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-              value === name ? 'border-accent' : 'border-[rgba(255,255,255,0.2)]'
+              value === name ? 'border-accent' : 'border-[rgba(var(--overlay),0.2)]'
             }`}>
               {value === name && <div className="w-2 h-2 rounded-full bg-accent" />}
             </div>
