@@ -166,3 +166,64 @@ export const flush = internalAction({
     }
   },
 });
+
+// One-off backfill: queues every Naboopay-paid booking (paid or refunded since) created after
+// `since` (ms) for a sale report, taking the real paid time from Naboopay. Refund reports are only
+// queued where DaBus recorded a real refund (ledger_refund already set); older "refunded" flags may
+// come from cancellations that never returned money.
+// Run with `npx convex run --prod ledger:backfillSince '{"since": <ms>}'`.
+export const backfillCandidates = internalQuery({
+  args: { since: v.number() },
+  handler: async (ctx, args) => {
+    const bookings = await ctx.db.query("bookings").collect();
+    return bookings.filter(
+      (b) =>
+        b.payment_id &&
+        (b.payment_status === "paid" || b.payment_status === "refunded") &&
+        (b.paid_at ?? b.created_at) >= args.since,
+    );
+  },
+});
+
+export const queueBackfill = internalMutation({
+  args: { bookingId: v.id("bookings"), paidAt: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking) return;
+    await ctx.db.patch(args.bookingId, {
+      ledger_sale: "pending",
+      ledger_refund: booking.ledger_refund ? "pending" : undefined,
+      ledger_error: undefined,
+      ledger_target: undefined,
+      paid_at: booking.paid_at ?? args.paidAt,
+    });
+  },
+});
+
+export const backfillSince = internalAction({
+  args: { since: v.number() },
+  handler: async (ctx, args) => {
+    const candidates: Doc<"bookings">[] = await ctx.runQuery(internal.ledger.backfillCandidates, args);
+    let missingPaidAt = 0;
+    for (const booking of candidates) {
+      let paidAt: number | undefined;
+      if (!booking.paid_at) {
+        try {
+          const tx = await fetch(
+            `https://api.naboopay.com/api/v2/transactions/${encodeURIComponent(booking.payment_id!)}`,
+            { headers: { Authorization: `Bearer ${process.env.NABOOPAY_API_KEY}`, Accept: "application/json" } },
+          ).then((r) => r.json());
+          const parsed = Date.parse(tx?.paid_at);
+          // Naboopay uses 0001-01-01 for "never paid"
+          if (parsed > Date.parse("2000-01-01")) paidAt = parsed;
+        } catch {
+          // fall back to updated_at at send time
+        }
+        if (!paidAt) missingPaidAt++;
+      }
+      await ctx.runMutation(internal.ledger.queueBackfill, { bookingId: booking._id, paidAt });
+    }
+    await ctx.scheduler.runAfter(0, internal.ledger.flush, {});
+    return { queued: candidates.length, missingPaidAt };
+  },
+});
