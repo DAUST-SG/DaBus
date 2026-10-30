@@ -1,9 +1,10 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
 import { toPublicTrip } from "./lib/serializers";
 import { activeCheckpointNames } from "./checkpoints";
 import { now } from "./lib/time";
+import { seatsTaken, syncSeats } from "./lib/seats";
 
 const sortTrips = (a: any, b: any) => {
   const aKey = `${a.departure_date}T${a.departure_time}`;
@@ -166,15 +167,13 @@ export const update = mutation({
     if (args.status !== undefined) patch.status = args.status;
 
     if (args.capacity !== undefined) {
-      const bookedSeats = trip.capacity - trip.available_seats;
-      if (args.capacity < bookedSeats) {
+      if (args.capacity < (await seatsTaken(ctx, trip._id))) {
         throw new ConvexError({
           status: 400,
           message: "Capacity cannot be lower than already-booked seats",
         });
       }
       patch.capacity = args.capacity;
-      patch.available_seats = args.capacity - bookedSeats;
     }
 
     if (args.min_seats !== undefined || args.cutoff_hours !== undefined) {
@@ -196,6 +195,7 @@ export const update = mutation({
     }
 
     await ctx.db.patch(args.tripId, patch);
+    await syncSeats(ctx, args.tripId);
     const updated = await ctx.db.get(args.tripId);
     return toPublicTrip(updated);
   },
@@ -223,5 +223,23 @@ export const remove = mutation({
     await ctx.db.delete(args.tripId);
 
     return { success: true };
+  },
+});
+
+// One-off repair for counts that drifted before seats were derived from bookings.
+// Run with `npx convex run trips:recountSeats` (add --prod for production).
+export const recountSeats = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const trips = await ctx.db.query("trips").collect();
+    const changed: string[] = [];
+    for (const trip of trips) {
+      await syncSeats(ctx, trip._id);
+      const after = await ctx.db.get(trip._id);
+      if (after && after.available_seats !== trip.available_seats) {
+        changed.push(`${trip.origin} → ${trip.destination} ${trip.departure_date}: ${trip.available_seats} → ${after.available_seats} available`);
+      }
+    }
+    return changed;
   },
 });

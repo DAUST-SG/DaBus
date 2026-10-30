@@ -146,10 +146,12 @@ export default function AdminDashboard() {
       return
     }
     setCreatingTrip(true)
+    // An empty or 0 minimum means "no minimum": drop the hours too, so it's removed cleanly
+    const payload = newTrip.min_seats ? newTrip : { ...newTrip, min_seats: null, cutoff_hours: null }
     try {
       const response = editingTripId
-        ? await api.put<{ success: boolean; data: Trip }>(`/trips/${editingTripId}`, newTrip)
-        : await api.post<{ success: boolean; data: Trip }>('/trips', newTrip)
+        ? await api.put<{ success: boolean; data: Trip }>(`/trips/${editingTripId}`, payload)
+        : await api.post<{ success: boolean; data: Trip }>('/trips', payload)
       if (response.data.success) {
         setShowCreateTrip(false)
         setEditingTripId(null)
@@ -166,17 +168,19 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleConfirmBooking = async (bookingId: string) => {
+  // Undo a booking marked paid that Naboopay never received money for
+  const handleMarkUnpaid = async (bookingId: string) => {
+    if (!confirm('Cancel this booking as NOT paid? Naboopay is checked first; a real payment must be refunded instead.')) return
     try {
       setConfirmingId(bookingId)
-      const response = await api.post<{ success: boolean }>(`/admin/bookings/${bookingId}/status`, {
-        status: 'confirmed',
-      })
+      const response = await api.post<{ success: boolean }>(`/admin/bookings/${bookingId}/unpaid`)
       if (response.data.success) {
         fetchDashboardData()
       }
-    } catch (err) {
-      alert('Failed to confirm booking')
+    } catch (err: unknown) {
+      const errorMessage = typeof err === 'object' && err && 'response' in err &&
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to cancel booking'
+      alert(errorMessage)
     } finally {
       setConfirmingId(null)
     }
@@ -550,16 +554,6 @@ export default function AdminDashboard() {
 
   const renderBookingActions = (booking: Booking) => (
     <>
-      {booking.status === 'pending' && (
-        <Button
-          variant="outline"
-          size="sm"
-          loading={confirmingId === booking.id}
-          onClick={() => handleConfirmBooking(booking.id)}
-        >
-          Confirm
-        </Button>
-      )}
       {booking.payment_id && booking.status !== 'completed' && (
         <Button
           variant="ghost"
@@ -584,6 +578,17 @@ export default function AdminDashboard() {
           title={!isDepartureMoreThan3hAway(booking.trip) ? 'Cannot refund — trip departs in less than 3 hours' : 'Refund this booking'}
         >
           Refund
+        </Button>
+      )}
+      {booking.payment_status === 'paid' && booking.status !== 'cancelled' && (
+        <Button
+          variant="ghost"
+          size="sm"
+          loading={confirmingId === booking.id}
+          onClick={() => handleMarkUnpaid(booking.id)}
+          title="Confirmed by mistake? Cancel it as not paid (Naboopay is checked first)"
+        >
+          Not paid
         </Button>
       )}
     </>
@@ -1244,23 +1249,34 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="rounded-xl border border-subtle p-4 space-y-3">
-                  <div>
-                    <p className="text-sm font-medium text-txt-primary">Minimum seats (optional)</p>
-                    <p className="text-xs text-txt-muted">
-                      If fewer seats are paid by the deadline, the trip is cancelled, paid students are refunded and admins get an email.
-                    </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-txt-primary">Minimum seats (optional)</p>
+                      <p className="text-xs text-txt-muted">
+                        If fewer seats are paid by the deadline, the trip is cancelled, paid students are refunded and admins get an email.
+                        Leave empty for no minimum.
+                      </p>
+                    </div>
+                    {(newTrip.min_seats !== null || newTrip.cutoff_hours !== null) && (
+                      <button
+                        type="button"
+                        onClick={() => setNewTrip({ ...newTrip, min_seats: null, cutoff_hours: null })}
+                        className="text-xs font-medium text-[rgb(var(--danger))] whitespace-nowrap hover:underline"
+                      >
+                        Remove minimum
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-txt-secondary mb-1.5">Minimum paid seats</label>
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         max={newTrip.capacity || undefined}
                         className="input-dark"
                         placeholder="No minimum"
                         value={newTrip.min_seats ?? ''}
-                        required={newTrip.cutoff_hours !== null}
                         onChange={(e) => setNewTrip({ ...newTrip, min_seats: e.target.value ? parseInt(e.target.value) : null })}
                       />
                     </div>
@@ -1273,7 +1289,7 @@ export default function AdminDashboard() {
                         className="input-dark"
                         placeholder="e.g. 4"
                         value={newTrip.cutoff_hours ?? ''}
-                        required={newTrip.min_seats !== null}
+                        required={!!newTrip.min_seats}
                         onChange={(e) => setNewTrip({ ...newTrip, cutoff_hours: e.target.value ? parseFloat(e.target.value) : null })}
                       />
                     </div>

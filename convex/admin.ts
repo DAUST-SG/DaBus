@@ -5,6 +5,8 @@ import { requireAdmin } from "./lib/guards";
 import { isFailed, isPaid } from "./lib/paymentStatus";
 import { toPublicBooking, toPublicTrip, toPublicUser } from "./lib/serializers";
 import { now } from "./lib/time";
+import { flagRefund, flagSale } from "./ledger";
+import { syncSeats } from "./lib/seats";
 import {
   assertRequiredText,
   assertStrongPassword,
@@ -14,42 +16,6 @@ import {
   normalizePhone,
   verifyPassword,
 } from "./lib/validation";
-
-const restoreSeat = async (ctx: any, booking: any) => {
-  const trip = await ctx.db.get(booking.trip_id);
-  if (!trip || trip.available_seats >= trip.capacity) {
-    return;
-  }
-
-  const available = trip.available_seats + 1;
-  await ctx.db.patch(trip._id, {
-    available_seats: available,
-    status: trip.status === "completed" || trip.status === "cancelled" || trip.status === "archived"
-      ? trip.status
-      : available >= trip.capacity
-        ? "scheduled"
-        : trip.status,
-    updated_at: now(),
-  });
-};
-
-const consumeSeat = async (ctx: any, booking: any) => {
-  const trip = await ctx.db.get(booking.trip_id);
-  if (!trip) {
-    throw new ConvexError({ status: 404, message: "Trip not found" });
-  }
-
-  if (trip.available_seats <= 0) {
-    throw new ConvexError({ status: 400, message: "No seats available to reconfirm booking" });
-  }
-
-  const available = trip.available_seats - 1;
-  await ctx.db.patch(trip._id, {
-    available_seats: available,
-    status: available === 0 ? "full" : "scheduled",
-    updated_at: now(),
-  });
-};
 
 export const stats = query({
   args: {
@@ -131,6 +97,8 @@ export const updateBookingStatus = mutation({
       v.literal("cancelled"),
       v.literal("completed"),
     ),
+    // Set only by the refund route, after Naboopay confirmed the refund
+    refundedViaNaboopay: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.sessionToken);
@@ -145,14 +113,6 @@ export const updateBookingStatus = mutation({
       return toPublicBooking(booking, trip);
     }
 
-    if (args.status === "cancelled" && (booking.status === "pending" || booking.status === "confirmed")) {
-      await restoreSeat(ctx, booking);
-    }
-
-    if (booking.status === "cancelled" && (args.status === "pending" || args.status === "confirmed")) {
-      await consumeSeat(ctx, booking);
-    }
-
     let paymentStatus = booking.payment_status;
     if (args.status === "confirmed") {
       paymentStatus = "paid";
@@ -165,6 +125,11 @@ export const updateBookingStatus = mutation({
       payment_status: paymentStatus,
       updated_at: now(),
     });
+    await syncSeats(ctx, booking.trip_id);
+
+    if (args.refundedViaNaboopay && paymentStatus === "refunded") {
+      await flagRefund(ctx, (await ctx.db.get(booking._id))!, "Refunded by admin");
+    }
 
     const updated = await ctx.db.get(booking._id);
     if (!updated) {
@@ -261,13 +226,15 @@ const applyNaboopayStatus = async (
     updated_at: now(),
   });
 
-  if (failed && (previousStatus === "pending" || previousStatus === "confirmed")) {
-    await restoreSeat(ctx, booking);
+  const reported = await ctx.db.get(booking._id);
+  if (paid && previousPaymentStatus !== "paid") {
+    await flagSale(ctx, reported);
+  }
+  if (nextPaymentStatus === "refunded" && previousPaymentStatus === "paid") {
+    await flagRefund(ctx, reported, "Payment reversed by Naboopay");
   }
 
-  if (paid && previousStatus === "cancelled") {
-    await consumeSeat(ctx, booking);
-  }
+  await syncSeats(ctx, booking.trip_id);
 
   const updated = await ctx.db.get(booking._id);
   if (!updated) {
@@ -320,6 +287,47 @@ export const listBookingsForSync = query({
         status: b.status,
         payment_status: b.payment_status,
       }));
+  },
+});
+
+// Undoes a manual "Confirm" on a booking that was never paid. The route passes Naboopay's
+// current status; a booking Naboopay shows as paid must be refunded instead.
+export const markUnpaid = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    bookingId: v.id("bookings"),
+    transaction_status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.sessionToken);
+
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking) {
+      throw new ConvexError({ status: 404, message: "Booking not found" });
+    }
+    if (args.transaction_status && isPaid(args.transaction_status)) {
+      throw new ConvexError({
+        status: 409,
+        message: "Naboopay shows this booking as paid. Use Refund instead.",
+      });
+    }
+    if (booking.ledger_sale) {
+      throw new ConvexError({
+        status: 409,
+        message: "This payment was already reported to DaLedger as received. Use Refund instead.",
+      });
+    }
+
+    await ctx.db.patch(booking._id, {
+      status: "cancelled",
+      payment_status: "pending",
+      updated_at: now(),
+    });
+    await syncSeats(ctx, booking.trip_id);
+
+    const updated = await ctx.db.get(booking._id);
+    const trip = await ctx.db.get(booking.trip_id);
+    return toPublicBooking(updated, trip);
   },
 });
 

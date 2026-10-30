@@ -86,6 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sessionToken: token,
       bookingId,
       status: "cancelled",
+      refundedViaNaboopay: true,
     });
 
     return sendSuccess(res, updated);
