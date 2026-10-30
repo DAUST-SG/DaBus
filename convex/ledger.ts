@@ -57,7 +57,10 @@ export const record = internalMutation({
 
 type Outcome = "done" | "failed" | "retry" | "slow_down";
 
-const post = async (path: string, body: Record<string, unknown>): Promise<{ outcome: Outcome; error?: string }> => {
+const post = async (
+  path: string,
+  body: Record<string, unknown>,
+): Promise<{ outcome: Outcome; status?: number; error?: string }> => {
   const base = process.env.LEDGER_URL;
   const key = process.env.LEDGER_INTAKE_KEY;
   if (!base || !key) return { outcome: "retry", error: "LEDGER_URL or LEDGER_INTAKE_KEY not set" };
@@ -75,12 +78,13 @@ const post = async (path: string, body: Record<string, unknown>): Promise<{ outc
 
   const text = await response.text();
   // 201 recorded, 200 duplicate: both mean the ledger has it
-  if (response.status === 200 || response.status === 201) return { outcome: "done" };
-  if (response.status === 429) return { outcome: "slow_down", error: text };
+  const status = response.status;
+  if (status === 200 || status === 201) return { outcome: "done", status };
+  if (status === 429) return { outcome: "slow_down", status, error: text };
   // Bad key / bad data: retrying the same request can't succeed, an admin must fix it
-  if (response.status === 401 || response.status === 422) return { outcome: "failed", error: `${response.status}: ${text}` };
+  if (status === 401 || status === 422) return { outcome: "failed", status, error: text };
   // 404 on a refund = sale not in the ledger yet; 5xx = temporary
-  return { outcome: "retry", error: `${response.status}: ${text}` };
+  return { outcome: "retry", status, error: text };
 };
 
 export const flush = internalAction({
@@ -121,10 +125,13 @@ export const flush = internalAction({
           bookingId,
           kind,
           state: result.outcome,
-          error: result.error,
+          error: result.error ? `HTTP ${result.status}: ${result.error}` : undefined,
         });
       }
-      if (result.error) console.warn(`Ledger ${kind} for booking ${bookingId}: ${result.error}`);
+      // One line per report so the ledger's response is visible in the Convex logs
+      const line = `Ledger ${kind} for booking ${bookingId}: ${result.status ? `HTTP ${result.status}` : "not sent"} → ${result.outcome}${result.error ? ` (${result.error.slice(0, 300)})` : ""}`;
+      if (result.outcome === "done") console.log(line);
+      else console.warn(line);
       // Over the rate limit: stop here, the cron picks up the rest
       if (result.outcome === "slow_down") break;
     }
