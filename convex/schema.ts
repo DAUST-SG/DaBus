@@ -90,6 +90,14 @@ export default defineSchema({
     email: v.optional(v.string()),
     pickup_location: v.optional(v.string()),
     dropoff_location: v.optional(v.string()),
+    // Price charged through Naboopay, saved at booking time (trip price can change later)
+    amount: v.optional(v.number()),
+    paid_at: v.optional(v.number()),
+    // DaLedger reporting state, see convex/ledger.ts
+    ledger_sale: v.optional(v.union(v.literal("pending"), v.literal("done"), v.literal("failed"))),
+    ledger_refund: v.optional(v.union(v.literal("pending"), v.literal("done"), v.literal("failed"))),
+    ledger_refund_reason: v.optional(v.string()),
+    ledger_error: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),

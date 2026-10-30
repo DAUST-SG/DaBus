@@ -5,6 +5,8 @@ import { getCurrentUser, requireBookingOwnerOrAdmin, requireUser } from "./lib/g
 import { toPublicBooking } from "./lib/serializers";
 import { now } from "./lib/time";
 import { activeCheckpointNames } from "./checkpoints";
+import { flagSale } from "./ledger";
+import { seatsTaken, syncSeats } from "./lib/seats";
 
 // A stop is required only when the city has some; it must be one of them
 const resolveCheckpoint = async (ctx: any, city: string, chosen: string | undefined, label: string) => {
@@ -16,28 +18,6 @@ const resolveCheckpoint = async (ctx: any, city: string, chosen: string | undefi
     throw new ConvexError({ status: 400, message: `Please choose a valid ${label} point` });
   }
   return match;
-};
-
-const restoreSeatIfNeeded = async (ctx: any, booking: any) => {
-  const trip = await ctx.db.get(booking.trip_id);
-  if (!trip) {
-    return;
-  }
-
-  if (trip.available_seats >= trip.capacity) {
-    return;
-  }
-
-  const updatedSeats = trip.available_seats + 1;
-  await ctx.db.patch(trip._id, {
-    available_seats: updatedSeats,
-    status: trip.status === "cancelled" || trip.status === "completed"
-      ? trip.status
-      : updatedSeats >= trip.capacity
-        ? "scheduled"
-        : trip.status,
-    updated_at: now(),
-  });
 };
 
 export const create = mutation({
@@ -67,7 +47,7 @@ export const create = mutation({
       throw new ConvexError({ status: 400, message: "Trip is not bookable" });
     }
 
-    if (trip.available_seats <= 0) {
+    if ((await seatsTaken(ctx, trip._id)) >= trip.capacity) {
       throw new ConvexError({ status: 400, message: "No seats available" });
     }
 
@@ -86,16 +66,12 @@ export const create = mutation({
       email: args.email?.trim(),
       pickup_location,
       dropoff_location,
+      amount: trip.price,
       created_at: timestamp,
       updated_at: timestamp,
     });
 
-    const updatedSeats = trip.available_seats - 1;
-    await ctx.db.patch(trip._id, {
-      available_seats: updatedSeats,
-      status: updatedSeats === 0 ? "full" : "scheduled",
-      updated_at: timestamp,
-    });
+    await syncSeats(ctx, trip._id);
 
     // Schedule auto-expiry for unpaid bookings after 10 minutes
     await ctx.scheduler.runAfter(
@@ -214,7 +190,7 @@ export const cancel = mutation({
     });
 
     if (previousStatus === "pending" || previousStatus === "confirmed") {
-      await restoreSeatIfNeeded(ctx, booking);
+      await syncSeats(ctx, booking.trip_id);
     }
 
     const updated = await ctx.db.get(booking._id);
@@ -244,6 +220,6 @@ export const expireUnpaidBooking = internalMutation({
       updated_at: now(),
     });
 
-    await restoreSeatIfNeeded(ctx, booking);
+    await syncSeats(ctx, booking.trip_id);
   },
 });

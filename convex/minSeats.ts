@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { now } from "./lib/time";
+import { flagRefund } from "./ledger";
 
 // Trips store date and time as Dakar local time, which is UTC+0 all year
 const departureMs = (trip: Doc<"trips">) =>
@@ -84,6 +85,8 @@ export const markRefunded = internalMutation({
       payment_status: "refunded",
       updated_at: now(),
     });
+    const booking = await ctx.db.get(args.bookingId);
+    if (booking) await flagRefund(ctx, booking, "Trip cancelled: minimum seats not reached");
   },
 });
 

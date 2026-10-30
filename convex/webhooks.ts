@@ -1,25 +1,10 @@
 import { httpAction, mutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
+import { flagRefund, flagSale } from "./ledger";
+import { syncSeats } from "./lib/seats";
 import { now } from "./lib/time";
 import { isPaid, isFailed } from "./lib/paymentStatus";
 
-const restoreSeatIfNeeded = async (ctx: any, booking: any) => {
-  const trip = await ctx.db.get(booking.trip_id);
-  if (!trip || trip.available_seats >= trip.capacity) {
-    return;
-  }
-
-  const available = trip.available_seats + 1;
-  await ctx.db.patch(trip._id, {
-    available_seats: available,
-    status: trip.status === "completed" || trip.status === "cancelled"
-      ? trip.status
-      : available >= trip.capacity
-        ? "scheduled"
-        : trip.status,
-    updated_at: now(),
-  });
-};
 
 export const processWaveWebhook = mutation({
   args: {
@@ -62,6 +47,7 @@ export const processWaveWebhook = mutation({
       payment_id: args.payment_id ?? booking.payment_id,
       updated_at: now(),
     });
+    await syncSeats(ctx, booking.trip_id);
 
     await ctx.db.insert("webhook_events", {
       source: "wave",
@@ -114,7 +100,6 @@ export const processNaboopayWebhook = mutation({
     const status = args.transaction_status.toLowerCase();
     const paid = isPaid(status);
     const failed = isFailed(status);
-    const wasCancelable = booking.status === "pending" || booking.status === "confirmed";
 
     const nextStatus = paid ? "confirmed" : failed ? "cancelled" : booking.status;
     const nextPaymentStatus = paid ? "paid" : failed ? "refunded" : booking.payment_status;
@@ -126,9 +111,16 @@ export const processNaboopayWebhook = mutation({
       updated_at: now(),
     });
 
-    if (failed && wasCancelable) {
-      await restoreSeatIfNeeded(ctx, booking);
+    const reported = await ctx.db.get(booking._id);
+    if (reported && paid && booking.payment_status !== "paid") {
+      await flagSale(ctx, reported);
     }
+    if (reported && failed && booking.payment_status === "paid") {
+      await flagRefund(ctx, reported, "Payment reversed by Naboopay");
+    }
+
+    // Covers both a failed payment freeing a seat and a late payment on an expired booking
+    await syncSeats(ctx, booking.trip_id);
 
     await ctx.db.insert("webhook_events", {
       source: "naboopay",
