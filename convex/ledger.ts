@@ -46,18 +46,49 @@ export const record = internalMutation({
     kind: v.union(v.literal("sale"), v.literal("refund")),
     state: v.union(v.literal("done"), v.literal("failed")),
     error: v.optional(v.string()),
+    target: v.string(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.bookingId, {
       [args.kind === "sale" ? "ledger_sale" : "ledger_refund"]: args.state,
       ledger_error: args.error,
+      ...(args.state === "done" ? { ledger_target: args.target } : {}),
     });
+  },
+});
+
+// After pointing LEDGER_URL (and its key) at a different ledger, queues again every sale
+// and refund that ledger hasn't received, keeping each one's original amount and paidAt.
+// Reports from before ledger_target existed went to the dev ledger, so they're included.
+// Run with `npx convex run --prod ledger:resendToCurrentLedger`.
+export const resendToCurrentLedger = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const current = process.env.LEDGER_URL;
+    if (!current) throw new Error("Set LEDGER_URL to the new ledger first");
+    const bookings = await ctx.db.query("bookings").collect();
+    let queued = 0;
+    for (const b of bookings) {
+      if (b.ledger_sale !== "done" || b.ledger_target === current) continue;
+      await ctx.db.patch(b._id, {
+        ledger_sale: "pending",
+        ledger_refund: b.ledger_refund ? "pending" : undefined,
+        ledger_target: undefined,
+        ledger_error: undefined,
+      });
+      queued++;
+    }
+    if (queued) await ctx.scheduler.runAfter(0, internal.ledger.flush, {});
+    return { queued, ledger: current };
   },
 });
 
 type Outcome = "done" | "failed" | "retry" | "slow_down";
 
-const post = async (path: string, body: Record<string, unknown>): Promise<{ outcome: Outcome; error?: string }> => {
+const post = async (
+  path: string,
+  body: Record<string, unknown>,
+): Promise<{ outcome: Outcome; status?: number; error?: string }> => {
   const base = process.env.LEDGER_URL;
   const key = process.env.LEDGER_INTAKE_KEY;
   if (!base || !key) return { outcome: "retry", error: "LEDGER_URL or LEDGER_INTAKE_KEY not set" };
@@ -75,12 +106,13 @@ const post = async (path: string, body: Record<string, unknown>): Promise<{ outc
 
   const text = await response.text();
   // 201 recorded, 200 duplicate: both mean the ledger has it
-  if (response.status === 200 || response.status === 201) return { outcome: "done" };
-  if (response.status === 429) return { outcome: "slow_down", error: text };
+  const status = response.status;
+  if (status === 200 || status === 201) return { outcome: "done", status };
+  if (status === 429) return { outcome: "slow_down", status, error: text };
   // Bad key / bad data: retrying the same request can't succeed, an admin must fix it
-  if (response.status === 401 || response.status === 422) return { outcome: "failed", error: `${response.status}: ${text}` };
+  if (status === 401 || status === 422) return { outcome: "failed", status, error: text };
   // 404 on a refund = sale not in the ledger yet; 5xx = temporary
-  return { outcome: "retry", error: `${response.status}: ${text}` };
+  return { outcome: "retry", status, error: text };
 };
 
 export const flush = internalAction({
@@ -121,10 +153,14 @@ export const flush = internalAction({
           bookingId,
           kind,
           state: result.outcome,
-          error: result.error,
+          error: result.error ? `HTTP ${result.status}: ${result.error}` : undefined,
+          target: process.env.LEDGER_URL!,
         });
       }
-      if (result.error) console.warn(`Ledger ${kind} for booking ${bookingId}: ${result.error}`);
+      // One line per report so the ledger's response is visible in the Convex logs
+      const line = `Ledger ${kind} for booking ${bookingId}: ${result.status ? `HTTP ${result.status}` : "not sent"} → ${result.outcome}${result.error ? ` (${result.error.slice(0, 300)})` : ""}`;
+      if (result.outcome === "done") console.log(line);
+      else console.warn(line);
       // Over the rate limit: stop here, the cron picks up the rest
       if (result.outcome === "slow_down") break;
     }

@@ -98,6 +98,8 @@ export default defineSchema({
     ledger_refund: v.optional(v.union(v.literal("pending"), v.literal("done"), v.literal("failed"))),
     ledger_refund_reason: v.optional(v.string()),
     ledger_error: v.optional(v.string()),
+    // LEDGER_URL the sale/refund was accepted by, so they can be re-sent after switching ledgers
+    ledger_target: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
