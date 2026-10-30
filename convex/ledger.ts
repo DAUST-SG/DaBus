@@ -46,12 +46,40 @@ export const record = internalMutation({
     kind: v.union(v.literal("sale"), v.literal("refund")),
     state: v.union(v.literal("done"), v.literal("failed")),
     error: v.optional(v.string()),
+    target: v.string(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.bookingId, {
       [args.kind === "sale" ? "ledger_sale" : "ledger_refund"]: args.state,
       ledger_error: args.error,
+      ...(args.state === "done" ? { ledger_target: args.target } : {}),
     });
+  },
+});
+
+// After pointing LEDGER_URL (and its key) at a different ledger, queues again every sale
+// and refund that ledger hasn't received, keeping each one's original amount and paidAt.
+// Reports from before ledger_target existed went to the dev ledger, so they're included.
+// Run with `npx convex run --prod ledger:resendToCurrentLedger`.
+export const resendToCurrentLedger = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const current = process.env.LEDGER_URL;
+    if (!current) throw new Error("Set LEDGER_URL to the new ledger first");
+    const bookings = await ctx.db.query("bookings").collect();
+    let queued = 0;
+    for (const b of bookings) {
+      if (b.ledger_sale !== "done" || b.ledger_target === current) continue;
+      await ctx.db.patch(b._id, {
+        ledger_sale: "pending",
+        ledger_refund: b.ledger_refund ? "pending" : undefined,
+        ledger_target: undefined,
+        ledger_error: undefined,
+      });
+      queued++;
+    }
+    if (queued) await ctx.scheduler.runAfter(0, internal.ledger.flush, {});
+    return { queued, ledger: current };
   },
 });
 
@@ -126,6 +154,7 @@ export const flush = internalAction({
           kind,
           state: result.outcome,
           error: result.error ? `HTTP ${result.status}: ${result.error}` : undefined,
+          target: process.env.LEDGER_URL!,
         });
       }
       // One line per report so the ledger's response is visible in the Convex logs
