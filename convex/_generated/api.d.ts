@@ -22,6 +22,7 @@ import type * as lib_time from "../lib/time.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as minSeats from "../minSeats.js";
 import type * as settings from "../settings.js";
+import type * as tickets from "../tickets.js";
 import type * as trips from "../trips.js";
 import type * as users from "../users.js";
 import type * as webhooks from "../webhooks.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   "lib/validation": typeof lib_validation;
   minSeats: typeof minSeats;
   settings: typeof settings;
+  tickets: typeof tickets;
   trips: typeof trips;
   users: typeof users;
   webhooks: typeof webhooks;

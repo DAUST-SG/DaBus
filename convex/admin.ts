@@ -5,7 +5,8 @@ import { requireAdmin } from "./lib/guards";
 import { isFailed, isPaid } from "./lib/paymentStatus";
 import { toPublicBooking, toPublicTrip, toPublicUser } from "./lib/serializers";
 import { now } from "./lib/time";
-import { flagRefund, flagSale } from "./ledger";
+import { flagRefund } from "./ledger";
+import { onBookingPaid } from "./tickets";
 import { syncSeats } from "./lib/seats";
 import { getSettings } from "./settings";
 import { withBookingWindow } from "./trips";
@@ -188,7 +189,7 @@ export const promoteUser = mutation({
 });
 
 // Shared by the admin "Sync" button and the scheduled minimum-seats check
-const applyNaboopayStatus = async (
+export const applyNaboopayStatus = async (
   ctx: any,
   args: { bookingId: Id<"bookings">; transaction_status: string },
 ) => {
@@ -238,7 +239,7 @@ const applyNaboopayStatus = async (
 
   const reported = await ctx.db.get(booking._id);
   if (paid && previousPaymentStatus !== "paid") {
-    await flagSale(ctx, reported);
+    await onBookingPaid(ctx, reported);
   }
   if (nextPaymentStatus === "refunded" && previousPaymentStatus === "paid") {
     await flagRefund(ctx, reported, "Payment reversed by Naboopay");
@@ -270,6 +271,24 @@ export const syncBookingFromNaboopay = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.sessionToken);
     return applyNaboopayStatus(ctx, args);
+  },
+});
+
+// Used by tickets:checkPayment when a student is back from Naboopay before the webhook arrived
+export const applyPaymentByTicket = internalMutation({
+  args: {
+    ticketToken: v.string(),
+    transaction_status: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const booking = await ctx.db
+      .query("bookings")
+      .withIndex("by_ticket_token", (q) => q.eq("ticket_token", args.ticketToken))
+      .unique();
+    if (!booking) {
+      throw new ConvexError({ status: 404, message: "Ticket not found" });
+    }
+    return applyNaboopayStatus(ctx, { bookingId: booking._id, transaction_status: args.transaction_status });
   },
 });
 

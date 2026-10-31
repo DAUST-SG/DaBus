@@ -188,7 +188,12 @@ export default function BookingsPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-subtle flex gap-2">
+                <div className="mt-4 pt-4 border-t border-subtle flex flex-wrap gap-2">
+                  {booking.payment_status === 'paid' && booking.status !== 'cancelled' && booking.ticket_token && (
+                    <Button size="sm" onClick={() => router.push(`/ticket/${booking.ticket_token}`)}>
+                      View ticket
+                    </Button>
+                  )}
                   {booking.status === 'confirmed' && booking.trip && (
                     <Button
                       variant="danger"

@@ -5,7 +5,8 @@ import { getCurrentUser, isServerCall, requireBookingOwnerOrAdmin, requireServer
 import { toPublicBooking } from "./lib/serializers";
 import { bookingsCloseAt, departureMs, now } from "./lib/time";
 import { activeCheckpointNames } from "./checkpoints";
-import { flagRefund, flagSale } from "./ledger";
+import { flagRefund } from "./ledger";
+import { generateSessionToken } from "./lib/validation";
 import { getSettings } from "./settings";
 import { seatsTaken, syncSeats } from "./lib/seats";
 
@@ -120,6 +121,7 @@ export const create = mutation({
       amount: trip.price,
       phone_key,
       client_key: args.clientKey,
+      ticket_token: generateSessionToken(),
       created_at: timestamp,
       updated_at: timestamp,
     });

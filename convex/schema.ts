@@ -107,6 +107,9 @@ export default defineSchema({
     // For booking limits: last 9 digits of the phone, and a hash of the booker's IP
     phone_key: v.optional(v.string()),
     client_key: v.optional(v.string()),
+    // Private, unguessable id for the ticket page (/ticket/<token>); emailed once when paid
+    ticket_token: v.optional(v.string()),
+    ticket_emailed_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
@@ -117,7 +120,8 @@ export default defineSchema({
     .index("by_created_at", ["created_at"])
     .index("by_payment_id", ["payment_id"])
     .index("by_phone_key", ["phone_key"])
-    .index("by_client_key", ["client_key"]),
+    .index("by_client_key", ["client_key"])
+    .index("by_ticket_token", ["ticket_token"]),
 
   // Shared pickup/drop-off stops, matched to a trip by its origin/destination city
   checkpoints: defineTable({

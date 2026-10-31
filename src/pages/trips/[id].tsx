@@ -163,16 +163,17 @@ export default function TripDetailsPage() {
               <div className="flex items-center gap-3 mb-3">
                 <span
                   className={`badge ${
+                    !bookingsOpen(trip) ? 'badge-neutral' :
                     trip.status === 'scheduled' ? 'badge-success' :
                     trip.status === 'full' ? 'badge-warning' : 'badge-neutral'
                   }`}
                 >
-                  {trip.status === 'scheduled' ? 'Available' : trip.status}
+                  {trip.status === 'full' ? 'Full' : !bookingsOpen(trip) ? 'Closed' : 'Available'}
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 mb-2">
-                <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-txt-primary">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
+                <h1 className="font-display text-2xl sm:text-4xl font-extrabold text-txt-primary break-words">
                   {trip.origin}
                 </h1>
                 <div className="flex items-center gap-2">
@@ -182,7 +183,7 @@ export default function TripDetailsPage() {
                     <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </div>
-                <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-txt-primary">
+                <h1 className="font-display text-2xl sm:text-4xl font-extrabold text-txt-primary break-words">
                   {trip.destination}
                 </h1>
               </div>
@@ -207,7 +208,7 @@ export default function TripDetailsPage() {
               </div>
               <div className="rounded-2xl bg-[rgba(var(--overlay),0.03)] border border-subtle p-5">
                 <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">Available</p>
-                <p className="font-display text-2xl font-bold text-[rgb(var(--success))]">
+                <p className={`font-display text-2xl font-bold ${bookingsOpen(trip) ? 'text-[rgb(var(--success))]' : 'text-txt-muted'}`}>
                   {trip.available_seats} <span className="text-sm font-body font-normal text-txt-muted">/ {trip.capacity}</span>
                 </p>
               </div>
