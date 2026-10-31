@@ -3,8 +3,16 @@ import { ConvexError, v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
 import { toPublicTrip } from "./lib/serializers";
 import { activeCheckpointNames } from "./checkpoints";
-import { now } from "./lib/time";
+import { bookingsCloseAt, departureMs, now } from "./lib/time";
+import { getSettings } from "./settings";
 import { seatsTaken, syncSeats } from "./lib/seats";
+
+// The exact closing time goes to the page, which compares it with the clock itself
+// (a cached query result can't be trusted to know what time it is); bookings:create rechecks.
+export const withBookingWindow = (trip: any, defaultCloseMinutes: number) => ({
+  ...toPublicTrip(trip),
+  bookings_close_at: new Date(bookingsCloseAt(trip, defaultCloseMinutes)).toISOString(),
+});
 
 const sortTrips = (a: any, b: any) => {
   const aKey = `${a.departure_date}T${a.departure_time}`;
@@ -48,8 +56,8 @@ export const list = query({
 
     const rows = await ctx.db.query("trips").collect();
     const filtered = rows.filter((trip: any) => {
-      // Hide archived trips from user-facing list unless explicitly requested
-      if (trip.status === "archived" && args.status !== "archived") return false;
+      // Students only see trips still to come; finished, cancelled and archived ones need an explicit status
+      if (!args.status && trip.status !== "scheduled" && trip.status !== "full") return false;
       const matchesOrigin =
         !origin || trip.origin.toLowerCase().includes(origin);
       const matchesDestination =
@@ -59,7 +67,8 @@ export const list = query({
     });
 
     filtered.sort(sortTrips);
-    return filtered.map(toPublicTrip);
+    const settings = await getSettings(ctx);
+    return filtered.map((trip) => withBookingWindow(trip, settings.default_booking_close_minutes));
   },
 });
 
@@ -72,8 +81,9 @@ export const getById = query({
     if (!trip) {
       throw new ConvexError({ status: 404, message: "Trip not found" });
     }
+    const settings = await getSettings(ctx);
     return {
-      ...toPublicTrip(trip),
+      ...withBookingWindow(trip, settings.default_booking_close_minutes),
       pickup_checkpoints: await activeCheckpointNames(ctx, trip.origin),
       dropoff_checkpoints: await activeCheckpointNames(ctx, trip.destination),
     };
@@ -91,9 +101,13 @@ export const create = mutation({
     price: v.number(),
     min_seats: v.optional(v.number()),
     cutoff_hours: v.optional(v.number()),
+    booking_close_minutes: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx, args.sessionToken);
+    if (args.booking_close_minutes !== undefined && !(args.booking_close_minutes >= 0)) {
+      throw new ConvexError({ status: 400, message: "Bookings close time must be 0 or more minutes" });
+    }
     validateMinSeats(args.min_seats, args.cutoff_hours, args.capacity);
 
     if (args.capacity <= 0) {
@@ -114,6 +128,7 @@ export const create = mutation({
       price: args.price,
       min_seats: args.min_seats,
       cutoff_hours: args.cutoff_hours,
+      booking_close_minutes: args.booking_close_minutes,
       status: "scheduled",
       created_by: admin._id,
       created_at: timestamp,
@@ -137,6 +152,9 @@ export const update = mutation({
     price: v.optional(v.number()),
     min_seats: v.optional(v.union(v.number(), v.null())),
     cutoff_hours: v.optional(v.union(v.number(), v.null())),
+    booking_close_minutes: v.optional(v.union(v.number(), v.null())),
+    // Admin's manual close; stays closed even if the departure time moves later
+    bookings_closed: v.optional(v.boolean()),
     status: v.optional(
       v.union(
         v.literal("scheduled"),
@@ -182,6 +200,16 @@ export const update = mutation({
       validateMinSeats(minSeats, cutoffHours, (patch.capacity as number | undefined) ?? trip.capacity);
       patch.min_seats = minSeats ?? undefined;
       patch.cutoff_hours = cutoffHours ?? undefined;
+    }
+
+    if (args.bookings_closed !== undefined) patch.bookings_closed = args.bookings_closed;
+
+    if (args.booking_close_minutes !== undefined) {
+      if (args.booking_close_minutes !== null && !(args.booking_close_minutes >= 0)) {
+        throw new ConvexError({ status: 400, message: "Bookings close time must be 0 or more minutes" });
+      }
+      // null = use the default from Settings
+      patch.booking_close_minutes = args.booking_close_minutes ?? undefined;
     }
 
     // Any change to the rule or the departure means the trip should be checked again
@@ -241,5 +269,24 @@ export const recountSeats = internalMutation({
       }
     }
     return changed;
+  },
+});
+
+// Safety net for trips nobody marked completed: runs from crons.ts.
+// Buses can be late, so this waits auto_complete_hours (Settings) after the departure time set.
+export const autoComplete = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const { auto_complete_hours } = await getSettings(ctx);
+    const cutoff = now() - auto_complete_hours * 3_600_000;
+    const trips = await ctx.db.query("trips").collect();
+    let completed = 0;
+    for (const trip of trips) {
+      if ((trip.status === "scheduled" || trip.status === "full") && departureMs(trip) < cutoff) {
+        await ctx.db.patch(trip._id, { status: "completed", updated_at: now() });
+        completed++;
+      }
+    }
+    return { completed };
   },
 });

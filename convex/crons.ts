@@ -10,4 +10,7 @@ crons.interval("minimum seats check", { minutes: 15 }, internal.minSeats.check, 
 // Retries ledger reports that failed temporarily; new ones are sent immediately
 crons.interval("ledger retry", { minutes: 5 }, internal.ledger.flush, {});
 
+// Completes trips nobody marked completed, a set time after departure (Settings)
+crons.interval("auto-complete trips", { minutes: 15 }, internal.trips.autoComplete, {});
+
 export default crons;

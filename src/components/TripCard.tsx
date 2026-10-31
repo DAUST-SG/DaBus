@@ -1,21 +1,17 @@
 import Link from 'next/link'
 import { Trip } from '@/types'
+import { bookingsOpen, formatTripDate } from '@/lib/time'
 
 interface TripCardProps {
   trip: Trip
 }
 
 export default function TripCard({ trip }: TripCardProps) {
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    })
-  }
+  const formatDate = (dateStr: string) => formatTripDate(dateStr)
 
   const fillPercent = ((trip.capacity - trip.available_seats) / trip.capacity) * 100
   const isFull = trip.status === 'full' || trip.available_seats === 0
+  const closed = !isFull && !bookingsOpen(trip)
 
   return (
     <Link href={`/trips/${trip.id}`} className="block group">
@@ -43,14 +39,14 @@ export default function TripCard({ trip }: TripCardProps) {
           </div>
           <span
             className={`badge flex-shrink-0 ml-3 ${
-              trip.status === 'scheduled'
+              trip.status === 'scheduled' && !closed
                 ? 'badge-success'
                 : trip.status === 'full'
                   ? 'badge-warning'
                   : 'badge-neutral'
             }`}
           >
-            {trip.status === 'scheduled' ? 'Open' : trip.status === 'full' ? 'Full' : trip.status}
+            {closed ? 'Closed' : trip.status === 'scheduled' ? 'Open' : trip.status === 'full' ? 'Full' : trip.status}
           </span>
         </div>
 
@@ -83,12 +79,12 @@ export default function TripCard({ trip }: TripCardProps) {
           </span>
           <span
             className={`text-sm font-medium transition-all duration-200 ${
-              isFull
+              isFull || closed
                 ? 'text-txt-muted'
                 : 'text-accent group-hover:translate-x-1 inline-flex items-center gap-1'
             }`}
           >
-            {isFull ? 'Sold Out' : (
+            {isFull ? 'Sold Out' : closed ? 'Bookings closed' : (
               <>
                 Book
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

@@ -40,6 +40,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         price: Number(req.body?.price || 0),
         min_seats: req.body?.min_seats ? Number(req.body.min_seats) : undefined,
         cutoff_hours: req.body?.cutoff_hours ? Number(req.body.cutoff_hours) : undefined,
+        booking_close_minutes:
+          req.body?.booking_close_minutes === null || req.body?.booking_close_minutes === undefined || req.body?.booking_close_minutes === ""
+            ? undefined
+            : Number(req.body.booking_close_minutes),
       });
       return sendSuccess(res, data);
     } catch (error) {

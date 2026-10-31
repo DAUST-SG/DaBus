@@ -28,6 +28,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       max_bookings_per_window: Number(req.body?.max_bookings_per_window),
       booking_window_minutes: Number(req.body?.booking_window_minutes),
       refund_cutoff_hours: Number(req.body?.refund_cutoff_hours),
+      default_booking_close_minutes: Number(req.body?.default_booking_close_minutes),
+      auto_complete_hours: Number(req.body?.auto_complete_hours),
     });
     return sendSuccess(res, data);
   } catch (error) {

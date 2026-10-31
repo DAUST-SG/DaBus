@@ -21,6 +21,10 @@ export interface Trip {
   status: 'scheduled' | 'full' | 'completed' | 'cancelled' | 'archived'
   min_seats?: number
   cutoff_hours?: number
+  booking_close_minutes?: number
+  bookings_closed?: boolean
+  // When bookings close (ISO); compare with the clock, the server rechecks on booking
+  bookings_close_at?: string
   created_at: string
   // Only returned by GET /trips/:id
   pickup_checkpoints?: string[]

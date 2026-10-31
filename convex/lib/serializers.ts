@@ -21,6 +21,8 @@ export const toPublicTrip = (trip: any) => ({
   status: trip.status,
   min_seats: trip.min_seats,
   cutoff_hours: trip.cutoff_hours,
+  booking_close_minutes: trip.booking_close_minutes,
+  bookings_closed: trip.bookings_closed ?? false,
   created_at: toIso(trip.created_at),
 });
 

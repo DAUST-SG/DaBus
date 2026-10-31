@@ -70,6 +70,10 @@ export default defineSchema({
     min_seats: v.optional(v.number()),
     cutoff_hours: v.optional(v.number()),
     min_seats_cancelled_at: v.optional(v.number()),
+    // Bookings close this many minutes before departure (settings default if unset);
+    // bookings_closed is the admin's manual close, kept until reopened
+    booking_close_minutes: v.optional(v.number()),
+    bookings_closed: v.optional(v.boolean()),
     min_seats_checked_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
@@ -130,6 +134,8 @@ export default defineSchema({
     max_bookings_per_window: v.number(),
     booking_window_minutes: v.number(),
     refund_cutoff_hours: v.number(),
+    default_booking_close_minutes: v.optional(v.number()),
+    auto_complete_hours: v.optional(v.number()),
     updated_at: v.number(),
   }),
 
