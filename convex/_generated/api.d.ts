@@ -24,6 +24,7 @@ import type * as lib_time from "../lib/time.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as minSeats from "../minSeats.js";
 import type * as privacy from "../privacy.js";
+import type * as scannerEmail from "../scannerEmail.js";
 import type * as settings from "../settings.js";
 import type * as ticketEmail from "../ticketEmail.js";
 import type * as tickets from "../tickets.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "lib/validation": typeof lib_validation;
   minSeats: typeof minSeats;
   privacy: typeof privacy;
+  scannerEmail: typeof scannerEmail;
   settings: typeof settings;
   ticketEmail: typeof ticketEmail;
   tickets: typeof tickets;

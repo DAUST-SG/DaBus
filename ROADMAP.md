@@ -13,10 +13,6 @@ where the bus is.
 - Sharing stops on its own when the trip is marked completed. Positions are not kept after
   the trip.
 
-## Scanner accounts
-Boarding (admin → Trips → Scan tickets) needs an admin account today. If drivers scan, give
-them a scan-only role instead of full admin.
-
 ## Email passengers of a trip
 Only once the updates board (admin → Updates) is not enough: an email to everyone booked on
 a trip, from dabus@mail.daustgov.com. No SMS for now.

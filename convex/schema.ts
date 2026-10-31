@@ -75,12 +75,17 @@ export default defineSchema({
     booking_close_minutes: v.optional(v.number()),
     bookings_closed: v.optional(v.boolean()),
     min_seats_checked_at: v.optional(v.number()),
+    // Passenger chosen to scan tickets for this trip, and their private link (/scan/<token>);
+    // the link works while the trip is scheduled or full (convex/boarding.ts)
+    scanner_booking_id: v.optional(v.id("bookings")),
+    scanner_token: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
   })
     .index("by_departure_date", ["departure_date"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_scanner_token", ["scanner_token"]),
 
   bookings: defineTable({
     trip_id: v.id("trips"),
