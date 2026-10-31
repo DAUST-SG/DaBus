@@ -925,6 +925,22 @@ export default function AdminDashboard() {
                             </Button>
                           </>
                         )}
+                        {trip.status === 'completed' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={updatingTripId === trip.id}
+                            onClick={() =>
+                              updateTrip(
+                                trip.id,
+                                { status: 'scheduled' },
+                                'Reopen this trip? It goes back to students\' list. If its departure was long ago, edit the departure time too, or it will be completed again automatically.',
+                              )
+                            }
+                          >
+                            Reopen trip
+                          </Button>
+                        )}
                         {trip.status !== 'archived' && (
                           <Button
                             variant="ghost"

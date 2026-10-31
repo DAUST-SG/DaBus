@@ -64,7 +64,10 @@ export const create = mutation({
 
     // Limits stop scripts from holding seats with unpaid bookings; paid bookings are never limited
     const settings = await getSettings(ctx);
-    if (trip.bookings_closed || now() >= bookingsCloseAt(trip, settings.default_booking_close_minutes)) {
+    // Admins can still add someone after the deadline or a manual close, e.g. a passenger by the road
+    const isAdmin = user?.role === "admin";
+    const closed = trip.bookings_closed || now() >= bookingsCloseAt(trip, settings.default_booking_close_minutes);
+    if (closed && !isAdmin) {
       throw new ConvexError({ status: 400, message: "Bookings are closed for this trip" });
     }
 
@@ -74,7 +77,7 @@ export const create = mutation({
       .withIndex("by_phone_key", (q) => q.eq("phone_key", phone_key))
       .collect();
     // Admins booking on someone's behalf are never limited
-    const limited = user?.role !== "admin";
+    const limited = !isAdmin;
     const unpaidHolds = byPhone.filter((b) => b.status === "pending" && b.payment_status === "pending").length;
     if (limited && unpaidHolds >= settings.max_unpaid_per_phone) {
       throw new ConvexError({
