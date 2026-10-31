@@ -61,7 +61,8 @@ export const pendingPayment = internalQuery({
       .query("bookings")
       .withIndex("by_ticket_token", (q) => q.eq("ticket_token", args.token))
       .unique();
-    if (!booking || booking.payment_status !== "pending" || !booking.payment_id) return null;
+    // Only while the booking still holds its seat; late payments on expired ones come via the webhook
+    if (!booking || booking.status !== "pending" || booking.payment_status !== "pending" || !booking.payment_id) return null;
     return booking.payment_id;
   },
 });
