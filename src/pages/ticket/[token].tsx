@@ -16,6 +16,7 @@ type Ticket = {
   has_payment: boolean
   amount?: number
   pickup_location?: string
+  pickup_time?: string
   dropoff_location?: string
   trip: { origin: string; destination: string; departure_date: string; departure_time: string; status: string } | null
   updates?: TripUpdate[]
@@ -140,7 +141,7 @@ export default function TicketPage() {
             <dl className="space-y-3 text-sm">
               {[
                 ['Passenger', ticket.full_name || '-'],
-                ['Pickup', ticket.pickup_location],
+                ['Pickup', ticket.pickup_time ? `${ticket.pickup_location} at ${ticket.pickup_time}` : ticket.pickup_location],
                 ['Drop-off', ticket.dropoff_location],
                 [paid ? 'Paid' : 'Price', ticket.amount ? `${ticket.amount.toLocaleString()} CFA` : undefined],
                 ['Ticket', ticket.ref],

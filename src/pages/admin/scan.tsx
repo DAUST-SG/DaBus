@@ -268,9 +268,7 @@ export default function ScanPage() {
                 <p className="text-sm text-txt-muted">Everyone is on board.</p>
               ) : (
                 <ul className="divide-y divide-subtle">
-                  {waiting
-                    .sort((a, b) => (a.pickup_location || '').localeCompare(b.pickup_location || ''))
-                    .map((p) => (
+                  {waiting.map((p) => (
                       <li key={p.booking_id} className="py-2 flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm text-txt-primary truncate">{p.full_name || 'Passenger'}</p>
@@ -280,7 +278,7 @@ export default function ScanPage() {
                           Board
                         </button>
                       </li>
-                    ))}
+                  ))}
                 </ul>
               )}
             </div>

@@ -29,6 +29,8 @@ export interface Trip {
   // Only returned by GET /trips/:id
   pickup_checkpoints?: string[]
   dropoff_checkpoints?: string[]
+  // When the bus passes each pickup stop that has a time set
+  pickup_times?: { name: string; time: string }[]
   updates?: TripUpdate[]
 }
 
@@ -45,6 +47,10 @@ export interface Checkpoint {
   name: string
   city: string
   active: boolean
+  // Route order within the city; null = not ordered yet
+  position: number | null
+  // Pickup time = departure + this; null = no time shown
+  minutes_after_departure: number | null
 }
 
 export interface Booking {

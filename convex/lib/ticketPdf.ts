@@ -34,7 +34,7 @@ export const buildTicketPdf = async (ticket: Ticket, link: string): Promise<Uint
   });
   line("Departure (Dakar time)", `${day} at ${trip.departure_time}`);
   line("Passenger", ticket.full_name || "-");
-  if (ticket.pickup_location) line("Pickup", ticket.pickup_location);
+  if (ticket.pickup_location) line("Pickup", ticket.pickup_time ? `${ticket.pickup_location} at ${ticket.pickup_time}` : ticket.pickup_location);
   if (ticket.dropoff_location) line("Drop-off", ticket.dropoff_location);
   line("Paid", `${String(ticket.amount ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} CFA`);
   line("Ticket", ticket.ref, 18);

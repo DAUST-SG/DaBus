@@ -135,6 +135,10 @@ export default defineSchema({
     name: v.string(),
     city: v.string(),
     active: v.boolean(),
+    // Route order within the city (lowest first; unset stops go last)
+    position: v.optional(v.number()),
+    // Pickup time = trip departure time + this many minutes; unset = no time shown
+    minutes_after_departure: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
   }).index("by_city", ["city"]),

@@ -537,6 +537,18 @@ export default function AdminDashboard() {
     }
   }
 
+  // Reorder (direction) or set the pickup time offset, then reload the list in its new order
+  const handleCheckpointChange = async (checkpoint: Checkpoint, change: { direction: 'up' | 'down' } | { minutes_after_departure: string }) => {
+    setCheckpointError(null)
+    try {
+      await api.patch('/admin/checkpoints', { id: checkpoint.id, ...change })
+      const response = await api.get<{ success: boolean; data: Checkpoint[] }>('/admin/checkpoints')
+      if (response.data.success) setCheckpoints(response.data.data)
+    } catch (err) {
+      setCheckpointError(apiError(err, 'Failed to update checkpoint'))
+    }
+  }
+
   const handleToggleCheckpoint = async (checkpoint: Checkpoint) => {
     setCheckpointError(null)
     try {
@@ -1740,6 +1752,8 @@ export default function AdminDashboard() {
               <h2 className="font-display text-xl font-bold text-txt-primary mb-1">Checkpoints</h2>
               <p className="text-xs text-txt-muted mb-5">
                 Students pick from the active stops in the trip&apos;s origin city (pickup) and destination city (drop-off).
+                Put each city&apos;s stops in route order with the arrows. &quot;Min&quot; is how many minutes after departure the
+                bus reaches a pickup stop; students see the time (e.g. 07:30 + 20 min = 07:50). Leave it empty to show no time.
               </p>
 
               {checkpointError && (
@@ -1752,17 +1766,52 @@ export default function AdminDashboard() {
                 <p className="text-txt-muted text-sm mb-5">No checkpoints yet</p>
               ) : (
                 <ul className="divide-y divide-subtle mb-5">
-                  {checkpoints.map((checkpoint) => (
-                    <li key={checkpoint.id} className="flex items-center justify-between gap-3 py-2.5">
-                      <div className={checkpoint.active ? '' : 'opacity-50'}>
-                        <p className="text-sm font-medium text-txt-primary">{checkpoint.name}</p>
+                  {checkpoints.map((checkpoint, i) => {
+                    const sameCity = (other?: Checkpoint) => other?.city === checkpoint.city
+                    return (
+                    <li key={checkpoint.id} className="flex items-center gap-2 py-2.5">
+                      <div className="flex flex-col">
+                        <button
+                          type="button"
+                          aria-label={`Move ${checkpoint.name} earlier`}
+                          disabled={!sameCity(checkpoints[i - 1])}
+                          onClick={() => handleCheckpointChange(checkpoint, { direction: 'up' })}
+                          className="text-txt-muted hover:text-accent disabled:opacity-20 leading-none px-1"
+                        >▲</button>
+                        <button
+                          type="button"
+                          aria-label={`Move ${checkpoint.name} later`}
+                          disabled={!sameCity(checkpoints[i + 1])}
+                          onClick={() => handleCheckpointChange(checkpoint, { direction: 'down' })}
+                          className="text-txt-muted hover:text-accent disabled:opacity-20 leading-none px-1"
+                        >▼</button>
+                      </div>
+                      <div className={`flex-1 min-w-0 ${checkpoint.active ? '' : 'opacity-50'}`}>
+                        <p className="text-sm font-medium text-txt-primary truncate">{checkpoint.name}</p>
                         <p className="text-xs text-txt-muted capitalize">{checkpoint.city}</p>
                       </div>
+                      <label className="flex items-center gap-1 text-xs text-txt-muted">
+                        +
+                        <input
+                          type="number"
+                          min={0}
+                          max={1440}
+                          className="input-dark w-16 px-2 py-1 text-sm"
+                          defaultValue={checkpoint.minutes_after_departure ?? ''}
+                          onBlur={(e) => {
+                            if (e.target.value !== String(checkpoint.minutes_after_departure ?? '')) {
+                              handleCheckpointChange(checkpoint, { minutes_after_departure: e.target.value })
+                            }
+                          }}
+                        />
+                        min
+                      </label>
                       <Button variant="ghost" size="sm" onClick={() => handleToggleCheckpoint(checkpoint)}>
                         {checkpoint.active ? 'Turn off' : 'Turn on'}
                       </Button>
                     </li>
-                  ))}
+                    )
+                  })}
                 </ul>
               )}
 
