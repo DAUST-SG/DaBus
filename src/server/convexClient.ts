@@ -31,7 +31,9 @@ const invoke = async <T>(
     payload = null;
   }
 
+  // Convex puts our ConvexError message in errorData; errorMessage is only "Server Error" in production
   const errorMessage =
+    payload?.errorData?.message ||
     payload?.errorMessage ||
     payload?.message ||
     (typeof payload?.error === "string" ? payload.error : undefined) ||
