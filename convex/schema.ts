@@ -101,6 +101,8 @@ export default defineSchema({
     dropoff_location: v.optional(v.string()),
     // Price charged through Naboopay, saved at booking time (trip price can change later)
     amount: v.optional(v.number()),
+    // Naboopay's fee the passenger paid on top of amount; not DaBus revenue
+    payment_fee: v.optional(v.number()),
     paid_at: v.optional(v.number()),
     // DaLedger reporting state, see convex/ledger.ts
     ledger_sale: v.optional(v.union(v.literal("pending"), v.literal("done"), v.literal("failed"))),
@@ -157,6 +159,8 @@ export default defineSchema({
     default_booking_close_minutes: v.optional(v.number()),
     auto_complete_hours: v.optional(v.number()),
     personal_data_months: v.optional(v.number()),
+    // Naboopay's fee, paid by the passenger on top of the ticket price (fees_customer_side)
+    payment_fee_percent: v.optional(v.number()),
     updated_at: v.number(),
   }),
 

@@ -36,7 +36,9 @@ export const buildTicketPdf = async (ticket: Ticket, link: string): Promise<Uint
   line("Passenger", ticket.full_name || "-");
   if (ticket.pickup_location) line("Pickup", ticket.pickup_time ? `${ticket.pickup_location} at ${ticket.pickup_time}` : ticket.pickup_location);
   if (ticket.dropoff_location) line("Drop-off", ticket.dropoff_location);
-  line("Paid", `${String(ticket.amount ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} CFA`);
+  const cfa = (n: number) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} CFA`;
+  const amount = ticket.amount ?? 0;
+  line("Paid", ticket.payment_fee ? `${cfa(amount + ticket.payment_fee)} (${cfa(amount)} + ${cfa(ticket.payment_fee)} payment fee)` : cfa(amount));
   line("Ticket", ticket.ref, 18);
 
   const qr = await pdf.embedPng(await QRCode.toBuffer(link, { margin: 1, width: 300 }));

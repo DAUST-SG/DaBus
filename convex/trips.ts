@@ -4,15 +4,18 @@ import { requireAdmin } from "./lib/guards";
 import { toPublicTrip } from "./lib/serializers";
 import { activeCheckpointNames, pickupTimes } from "./checkpoints";
 import { bookingsCloseAt, departureMs, now } from "./lib/time";
-import { getSettings } from "./settings";
+import { getSettings, paymentFee, type Settings } from "./settings";
 import { seatsTaken, syncSeats } from "./lib/seats";
 import { updatesFor } from "./updates";
 
 // The exact closing time goes to the page, which compares it with the clock itself
 // (a cached query result can't be trusted to know what time it is); bookings:create rechecks.
-export const withBookingWindow = (trip: any, defaultCloseMinutes: number) => ({
+export const withBookingWindow = (trip: any, settings: Settings) => ({
   ...toPublicTrip(trip),
-  bookings_close_at: new Date(bookingsCloseAt(trip, defaultCloseMinutes)).toISOString(),
+  bookings_close_at: new Date(bookingsCloseAt(trip, settings.default_booking_close_minutes)).toISOString(),
+  // Shown with the price so students know the total before Naboopay's page
+  payment_fee: paymentFee(trip.price, settings.payment_fee_percent),
+  payment_fee_percent: settings.payment_fee_percent,
 });
 
 const sortTrips = (a: any, b: any) => {
@@ -69,7 +72,7 @@ export const list = query({
 
     filtered.sort(sortTrips);
     const settings = await getSettings(ctx);
-    return filtered.map((trip) => withBookingWindow(trip, settings.default_booking_close_minutes));
+    return filtered.map((trip) => withBookingWindow(trip, settings));
   },
 });
 
@@ -84,7 +87,7 @@ export const getById = query({
     }
     const settings = await getSettings(ctx);
     return {
-      ...withBookingWindow(trip, settings.default_booking_close_minutes),
+      ...withBookingWindow(trip, settings),
       pickup_checkpoints: await activeCheckpointNames(ctx, trip.origin),
       dropoff_checkpoints: await activeCheckpointNames(ctx, trip.destination),
       // A list, not an object: Convex field names can't contain accents ("Liberté 6")

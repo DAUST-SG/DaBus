@@ -28,6 +28,8 @@ const toTicket = (booking: Doc<"bookings">, trip: Doc<"trips"> | null, pickupTim
   payment_status: booking.payment_status,
   has_payment: !!booking.payment_id,
   amount: booking.amount ?? trip?.price,
+  // Naboopay's fee on top of amount (bookings made before fees were shown have none)
+  payment_fee: booking.payment_fee,
   pickup_location: booking.pickup_location,
   // When the bus passes the pickup stop, if the stop has a time set (Settings → Checkpoints)
   pickup_time: pickupTime,

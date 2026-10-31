@@ -10,6 +10,9 @@ export const formatTripDate = (
 export const formatDakarTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Dakar' })
 
+// Price + Naboopay's fee: what the student actually pays
+export const totalPrice = (trip: Trip) => trip.price + (trip.payment_fee || 0)
+
 // The server rechecks on booking; this only decides what the page shows
 export const bookingsOpen = (trip: Trip) =>
   (trip.status === 'scheduled' || trip.status === 'full') &&
