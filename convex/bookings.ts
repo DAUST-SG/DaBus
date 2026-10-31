@@ -1,11 +1,12 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
-import { getCurrentUser, requireBookingOwnerOrAdmin, requireUser } from "./lib/guards";
+import { getCurrentUser, isServerCall, requireBookingOwnerOrAdmin, requireServer, requireUser } from "./lib/guards";
 import { toPublicBooking } from "./lib/serializers";
-import { now } from "./lib/time";
+import { departureMs, now } from "./lib/time";
 import { activeCheckpointNames } from "./checkpoints";
-import { flagSale } from "./ledger";
+import { flagRefund, flagSale } from "./ledger";
+import { getSettings } from "./settings";
 import { seatsTaken, syncSeats } from "./lib/seats";
 
 // A stop is required only when the city has some; it must be one of them
@@ -20,8 +21,17 @@ const resolveCheckpoint = async (ctx: any, city: string, chosen: string | undefi
   return match;
 };
 
+// Last 9 digits, so "+221 77 123 45 67" and "771234567" count as the same phone
+const phoneKey = (phone: string) => {
+  const digits = phone.replace(/\D/g, "").slice(-9);
+  return digits.length >= 6 ? digits : phone.trim().toLowerCase();
+};
+
+// Called only by our booking API route, which passes the server secret and a hash of the caller's IP
 export const create = mutation({
   args: {
+    serverSecret: v.string(),
+    clientKey: v.optional(v.string()),
     sessionToken: v.optional(v.string()),
     trip_id: v.id("trips"),
     full_name: v.string(),
@@ -31,6 +41,7 @@ export const create = mutation({
     dropoff_location: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    requireServer(args.serverSecret);
     if (!args.full_name.trim() || !args.phone.trim()) {
       throw new ConvexError({ status: 400, message: "Full name and phone are required" });
     }
@@ -51,6 +62,39 @@ export const create = mutation({
       throw new ConvexError({ status: 400, message: "No seats available" });
     }
 
+    // Limits stop scripts from holding seats with unpaid bookings; paid bookings are never limited
+    const settings = await getSettings(ctx);
+    const phone_key = phoneKey(args.phone);
+    const byPhone = await ctx.db
+      .query("bookings")
+      .withIndex("by_phone_key", (q) => q.eq("phone_key", phone_key))
+      .collect();
+    // Admins booking on someone's behalf are never limited
+    const limited = user?.role !== "admin";
+    const unpaidHolds = byPhone.filter((b) => b.status === "pending" && b.payment_status === "pending").length;
+    if (limited && unpaidHolds >= settings.max_unpaid_per_phone) {
+      throw new ConvexError({
+        status: 429,
+        message: `You already have ${unpaidHolds} unpaid booking${unpaidHolds === 1 ? "" : "s"}. Pay or wait for one to expire (max 10 minutes), then try again.`,
+      });
+    }
+    const windowStart = now() - settings.booking_window_minutes * 60_000;
+    const byClient = args.clientKey
+      ? await ctx.db
+          .query("bookings")
+          .withIndex("by_client_key", (q) => q.eq("client_key", args.clientKey))
+          .collect()
+      : [];
+    const recent = new Set(
+      [...byPhone, ...byClient].filter((b) => b.created_at >= windowStart).map((b) => b._id),
+    ).size;
+    if (limited && recent >= settings.max_bookings_per_window) {
+      throw new ConvexError({
+        status: 429,
+        message: `Too many bookings in a short time. Please wait ${settings.booking_window_minutes} minutes and try again.`,
+      });
+    }
+
     const pickup_location = await resolveCheckpoint(ctx, trip.origin, args.pickup_location, "pickup");
     const dropoff_location = await resolveCheckpoint(ctx, trip.destination, args.dropoff_location, "drop-off");
 
@@ -67,6 +111,8 @@ export const create = mutation({
       pickup_location,
       dropoff_location,
       amount: trip.price,
+      phone_key,
+      client_key: args.clientKey,
       created_at: timestamp,
       updated_at: timestamp,
     });
@@ -91,22 +137,19 @@ export const create = mutation({
   },
 });
 
+// Called only by our booking API route right after Naboopay created the payment
 export const attachPaymentTransaction = mutation({
   args: {
-    sessionToken: v.optional(v.string()),
+    serverSecret: v.string(),
     bookingId: v.id("bookings"),
     payment_id: v.string(),
     payment_link: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    requireServer(args.serverSecret);
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) {
       throw new ConvexError({ status: 404, message: "Booking not found" });
-    }
-
-    // Only enforce ownership check for bookings tied to a user account
-    if (booking.user_id) {
-      await requireBookingOwnerOrAdmin(ctx, booking, args.sessionToken);
     }
 
     await ctx.db.patch(booking._id, {
@@ -161,7 +204,9 @@ export const getById = query({
   },
 });
 
-export const cancel = mutation({
+// What happens if this booking is cancelled now: used by the cancel route before refunding,
+// and shown to the student. Only the owner or an admin may ask.
+export const cancellationCheck = query({
   args: {
     sessionToken: v.optional(v.string()),
     bookingId: v.id("bookings"),
@@ -171,9 +216,44 @@ export const cancel = mutation({
     if (!booking) {
       throw new ConvexError({ status: 404, message: "Booking not found" });
     }
+    await requireBookingOwnerOrAdmin(ctx, booking, args.sessionToken);
+    if (booking.status === "cancelled") {
+      return { allowed: false, needsRefund: false, message: "This booking is already cancelled" };
+    }
+    if (booking.payment_status !== "paid") {
+      return { allowed: true, needsRefund: false };
+    }
+    const trip = await ctx.db.get(booking.trip_id);
+    const { refund_cutoff_hours } = await getSettings(ctx);
+    if (!trip || !booking.payment_id || departureMs(trip) - now() < refund_cutoff_hours * 3_600_000) {
+      return {
+        allowed: false,
+        needsRefund: true,
+        message: `Paid bookings can be cancelled and refunded up to ${refund_cutoff_hours} hours before departure. Please contact the DaBus team.`,
+      };
+    }
+    return { allowed: true, needsRefund: true, payment_id: booking.payment_id };
+  },
+});
 
-    // Only enforce ownership check for bookings tied to a user account
-    if (booking.user_id) {
+// The owner or an admin can cancel an unpaid booking. A paid booking is cancelled only by our
+// server, after Naboopay confirmed the refund (refundedViaNaboopay), so nobody is marked
+// "refunded" without getting their money back.
+export const cancel = mutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    bookingId: v.id("bookings"),
+    refundedViaNaboopay: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking) {
+      throw new ConvexError({ status: 404, message: "Booking not found" });
+    }
+
+    const fromServer = isServerCall(args.serverSecret);
+    if (!fromServer) {
       await requireBookingOwnerOrAdmin(ctx, booking, args.sessionToken);
     }
 
@@ -182,12 +262,24 @@ export const cancel = mutation({
       return toPublicBooking(booking, trip);
     }
 
+    const paid = booking.payment_status === "paid";
+    if (paid && !(fromServer && args.refundedViaNaboopay)) {
+      throw new ConvexError({
+        status: 400,
+        message: "Paid bookings are cancelled through a refund. Use Cancel in My Bookings, or Refund in the admin page.",
+      });
+    }
+
     const previousStatus = booking.status;
     await ctx.db.patch(booking._id, {
       status: "cancelled",
-      payment_status: booking.payment_status === "paid" ? "refunded" : booking.payment_status,
+      payment_status: paid ? "refunded" : booking.payment_status,
       updated_at: now(),
     });
+
+    if (paid) {
+      await flagRefund(ctx, (await ctx.db.get(booking._id))!, "Cancelled by the student");
+    }
 
     if (previousStatus === "pending" || previousStatus === "confirmed") {
       await syncSeats(ctx, booking.trip_id);

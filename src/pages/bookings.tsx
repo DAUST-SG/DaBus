@@ -39,15 +39,20 @@ export default function BookingsPage() {
     }
   }
 
-  const handleCancel = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to request cancellation?')) return
+  const handleCancel = async (booking: Booking) => {
+    const paid = booking.payment_status === 'paid'
+    const question = paid
+      ? 'Cancel this booking? Your payment will be refunded through Naboopay (Wave / Orange Money).'
+      : 'Cancel this booking?'
+    if (!confirm(question)) return
 
     try {
-      const response = await api.post<{ success: boolean; message?: string }>(`/bookings/${bookingId}/cancel`)
+      const response = await api.post<{ success: boolean; message?: string }>(`/bookings/${booking.id}/cancel`)
       if (response.data.success) {
         setBookings(bookings.map(b =>
-          b.id === bookingId ? { ...b, status: 'cancelled' } : b
+          b.id === booking.id ? { ...b, status: 'cancelled', payment_status: paid ? 'refunded' : b.payment_status } : b
         ))
+        if (response.data.message) alert(response.data.message)
       }
     } catch (err: unknown) {
       const errorMessage = typeof err === 'object' && err && 'response' in err &&
@@ -187,7 +192,7 @@ export default function BookingsPage() {
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => handleCancel(booking.id)}
+                      onClick={() => handleCancel(booking)}
                     >
                       Cancel Booking
                     </Button>

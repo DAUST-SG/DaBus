@@ -31,7 +31,9 @@ const invoke = async <T>(
     payload = null;
   }
 
+  // Convex puts our ConvexError message in errorData; errorMessage is only "Server Error" in production
   const errorMessage =
+    payload?.errorData?.message ||
     payload?.errorMessage ||
     payload?.message ||
     (typeof payload?.error === "string" ? payload.error : undefined) ||
@@ -61,3 +63,12 @@ export const convexMutation = async <T>(name: string, args: Record<string, unkno
 
 export const convexAction = async <T>(name: string, args: Record<string, unknown>) =>
   invoke<T>("action", name, args);
+
+// Proves to Convex that a call comes from this server (see requireServer in convex/lib/guards.ts)
+export const serverSecret = () => {
+  const secret = process.env.CONVEX_SERVER_SECRET;
+  if (!secret) {
+    throw new Error("CONVEX_SERVER_SECRET is not set");
+  }
+  return secret;
+};

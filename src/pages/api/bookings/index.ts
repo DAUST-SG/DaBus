@@ -1,12 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import {
+  clientKey,
   getBearerToken,
   methodNotAllowed,
   parseConvexError,
   sendError,
   sendSuccess,
 } from "@/server/api";
-import { convexMutation, convexQuery } from "@/server/convexClient";
+import { convexMutation, convexQuery, serverSecret } from "@/server/convexClient";
 import { createNaboopayTransaction, NaboopayError } from "@/server/naboopay";
 
 const resolveBaseUrl = (req: NextApiRequest) => {
@@ -18,9 +19,10 @@ const resolveBaseUrl = (req: NextApiRequest) => {
     return envBase;
   }
 
+  // Set APP_BASE_URL in production; the Host header is only a fallback for local dev
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
   const protocol = forwardedProto || "http";
-  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000");
+  const host = String(req.headers.host || "localhost:3000");
   return `${protocol}://${host}`;
 };
 
@@ -48,6 +50,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const email = String(req.body?.email || "").trim();
 
       const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string; email?: string; pickup_location?: string } }>("bookings:create", {
+        serverSecret: serverSecret(),
+        clientKey: clientKey(req),
         sessionToken: token || undefined,
         trip_id: String(req.body?.trip_id || ""),
         full_name: String(req.body?.full_name || ""),
@@ -89,7 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         const updatedBooking = await convexMutation("bookings:attachPaymentTransaction", {
-          sessionToken: token || undefined,
+          serverSecret: serverSecret(),
           bookingId,
           payment_id: checkout.order_id,
           payment_link: checkout.checkout_url,
@@ -107,7 +111,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (bookingId) {
           // For guest bookings without a token, cancel without session
           await convexMutation("bookings:cancel", {
-            sessionToken: token || undefined,
+            serverSecret: serverSecret(),
             bookingId,
           }).catch(() => undefined);
         }

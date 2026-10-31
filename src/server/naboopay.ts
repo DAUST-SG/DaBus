@@ -183,3 +183,25 @@ export const verifyNaboopaySignature = (
   const providedHex = providedRaw.toLowerCase();
   return safeCompare(expectedHex, providedHex) || safeCompare(expectedBase64, providedRaw);
 };
+
+// Asks Naboopay to return the money for an order. Throws NaboopayError if it refuses.
+export const refundNaboopayTransaction = async (orderId: string) => {
+  const apiKey = process.env.NABOOPAY_API_KEY;
+  if (!apiKey) {
+    throw new NaboopayError(500, "Naboopay is not configured");
+  }
+  const response = await fetch(`https://api.naboopay.com/api/v2/refund/${encodeURIComponent(orderId)}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+  });
+  if (!response.ok) {
+    let message = "Naboopay refund request failed";
+    try {
+      const body = await response.json();
+      message = body?.message || body?.error || body?.detail || message;
+    } catch {
+      // keep the generic message
+    }
+    throw new NaboopayError(response.status, String(message));
+  }
+};

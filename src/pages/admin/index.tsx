@@ -17,6 +17,13 @@ const TABS = [
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
+type BookingRules = {
+  max_unpaid_per_phone: number
+  max_bookings_per_window: number
+  booking_window_minutes: number
+  refund_cutoff_hours: number
+}
+
 const EMPTY_TRIP = {
   origin: '',
   destination: '',
@@ -75,6 +82,11 @@ export default function AdminDashboard() {
 
   // Checkpoints
   const [showCheckpoints, setShowCheckpoints] = useState(false)
+
+  // Booking rules (Settings tab)
+  const [bookingRules, setBookingRules] = useState<BookingRules | null>(null)
+  const [savingRules, setSavingRules] = useState(false)
+  const [rulesMessage, setRulesMessage] = useState<string | null>(null)
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
   const [newCheckpoint, setNewCheckpoint] = useState({ name: '', city: '' })
   const [savingCheckpoint, setSavingCheckpoint] = useState(false)
@@ -92,9 +104,10 @@ export default function AdminDashboard() {
     }
   }, [user])
 
+  // Only the first load blanks the page; refreshes after an action happen in the background
+  // (each button shows its own spinner), so the admin keeps their place on the page.
   const fetchDashboardData = async () => {
     try {
-      setLoading(true)
       const [statsRes, tripsRes, bookingsRes] = await Promise.all([
         api.get<{ success: boolean; data: DashboardStats }>('/admin/stats'),
         api.get<{ success: boolean; data: Trip[] }>('/admin/trips'),
@@ -320,11 +333,31 @@ export default function AdminDashboard() {
     }
   }
 
-  const isDepartureMoreThan3hAway = (trip?: Trip) => {
-    if (!trip) return false
-    const departure = new Date(`${trip.departure_date}T${trip.departure_time}`)
-    const nowPlus3h = new Date(Date.now() + 3 * 60 * 60 * 1000)
-    return departure > nowPlus3h
+  const loadBookingRules = async () => {
+    try {
+      const response = await api.get<{ success: boolean; data: BookingRules }>('/admin/settings')
+      if (response.data.success) setBookingRules(response.data.data)
+    } catch {
+      setRulesMessage('Failed to load booking rules')
+    }
+  }
+
+  const handleSaveRules = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!bookingRules) return
+    setSavingRules(true)
+    setRulesMessage(null)
+    try {
+      const response = await api.put<{ success: boolean; data: BookingRules }>('/admin/settings', bookingRules)
+      if (response.data.success) {
+        setBookingRules(response.data.data)
+        setRulesMessage('Saved')
+      }
+    } catch (err: unknown) {
+      setRulesMessage(apiError(err, 'Failed to save booking rules'))
+    } finally {
+      setSavingRules(false)
+    }
   }
 
   const handleAddAdmin = async (e: React.FormEvent) => {
@@ -573,9 +606,8 @@ export default function AdminDashboard() {
           variant="ghost"
           size="sm"
           loading={refundingId === booking.id}
-          disabled={!isDepartureMoreThan3hAway(booking.trip)}
           onClick={() => handleRefundBooking(booking.id)}
-          title={!isDepartureMoreThan3hAway(booking.trip) ? 'Cannot refund — trip departs in less than 3 hours' : 'Refund this booking'}
+          title="Refund through Naboopay and cancel this booking"
         >
           Refund
         </Button>
@@ -662,7 +694,7 @@ export default function AdminDashboard() {
               type="button"
               role="tab"
               aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => { setTab(t.id); if (t.id === 'settings' && !bookingRules) loadBookingRules() }}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 tab === t.id
                   ? 'border-accent text-txt-primary'
@@ -1111,6 +1143,46 @@ export default function AdminDashboard() {
         )}
 
         {tab === 'settings' && (
+          <div className="space-y-4">
+          <form onSubmit={handleSaveRules} className="glass rounded-2xl p-4 sm:p-6 space-y-4">
+            <div>
+              <h2 className="font-display font-bold text-txt-primary">Booking rules</h2>
+              <p className="text-sm text-txt-muted">
+                Limits stop people or scripts from holding seats with unpaid bookings. Paid bookings are never limited, and admins are not limited.
+              </p>
+            </div>
+            {!bookingRules ? (
+              <p className="text-sm text-txt-muted">{rulesMessage || 'Loading...'}</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {([
+                    ['max_unpaid_per_phone', 'Unpaid bookings allowed at once, per phone number', '1'],
+                    ['max_bookings_per_window', 'Bookings allowed per phone or device in the time window', '1'],
+                    ['booking_window_minutes', 'Time window (minutes)', '1'],
+                    ['refund_cutoff_hours', 'Students can cancel and get refunded until (hours before departure)', '0.5'],
+                  ] as const).map(([key, label, step]) => (
+                    <label key={key} className="block">
+                      <span className="block text-xs font-medium text-txt-secondary mb-1.5">{label}</span>
+                      <input
+                        type="number"
+                        required
+                        min={key === 'refund_cutoff_hours' ? 0 : 1}
+                        step={step}
+                        className="input-dark"
+                        value={bookingRules[key]}
+                        onChange={(e) => setBookingRules({ ...bookingRules, [key]: Number(e.target.value) })}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button type="submit" size="sm" loading={savingRules}>Save rules</Button>
+                  {rulesMessage && <span className="text-sm text-txt-muted">{rulesMessage}</span>}
+                </div>
+              </>
+            )}
+          </form>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { title: 'Checkpoints', text: 'Pickup and drop-off stops students choose from.', action: openCheckpoints },
@@ -1127,6 +1199,7 @@ export default function AdminDashboard() {
                 <p className="text-sm text-txt-muted">{item.text}</p>
               </button>
             ))}
+          </div>
           </div>
         )}
 

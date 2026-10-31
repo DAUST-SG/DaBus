@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { requireUser } from "./lib/guards";
+import { requireServer, requireUser } from "./lib/guards";
 import { toPublicUser } from "./lib/serializers";
 import { now, sessionExpiryMs } from "./lib/time";
 import {
@@ -165,11 +165,14 @@ export const login = mutation({
   },
 });
 
+// Returns the raw sign-in token, so only our server (which emails it) may call this
 export const requestStudentMagicLink = mutation({
   args: {
+    serverSecret: v.string(),
     email: v.string(),
   },
   handler: async (ctx, args) => {
+    requireServer(args.serverSecret);
     try {
       const email = normalizeEmail(args.email);
       assertValidEmail(email);
@@ -187,6 +190,10 @@ export const requestStudentMagicLink = mutation({
         .query("magic_links")
         .withIndex("by_email", (q: any) => q.eq("email", email))
         .collect();
+      // ponytail: one link per email per minute stops inbox flooding; per-IP limits if abuse appears
+      if (existingLinks.some((link: any) => now() - link.created_at < 60_000)) {
+        throw new ConvexError({ status: 429, message: "A sign-in link was just sent. Please wait a minute before asking again." });
+      }
       await Promise.all(existingLinks.map((link: any) => ctx.db.delete(link._id)));
 
       const token = generateSessionToken();

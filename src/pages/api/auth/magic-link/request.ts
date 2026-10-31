@@ -5,7 +5,7 @@ import {
   sendError,
   sendSuccess,
 } from "@/server/api";
-import { convexMutation } from "@/server/convexClient";
+import { convexMutation, serverSecret } from "@/server/convexClient";
 import { sendMagicLinkEmail } from "@/server/magicLink";
 
 const MAGIC_LINK_EXPIRY_MINUTES = 20;
@@ -32,9 +32,10 @@ const resolveBaseUrl = (req: NextApiRequest) => {
     return envBase;
   }
 
+  // Set APP_BASE_URL in production; the Host header is only a fallback for local dev
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
   const protocol = forwardedProto || "http";
-  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000");
+  const host = String(req.headers.host || "localhost:3000");
   return `${protocol}://${host}`;
 };
 
@@ -46,6 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const nextPath = normalizeNextPath(req.body?.next);
     const requested = await convexMutation<{ email: string; token: string }>("auth:requestStudentMagicLink", {
+      serverSecret: serverSecret(),
       email: String(req.body?.email || ""),
     });
 
