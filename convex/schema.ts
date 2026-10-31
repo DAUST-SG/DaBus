@@ -110,6 +110,9 @@ export default defineSchema({
     // Private, unguessable id for the ticket page (/ticket/<token>); emailed once when paid
     ticket_token: v.optional(v.string()),
     ticket_emailed_at: v.optional(v.number()),
+    // Ticket scanned at the bus door (convex/boarding.ts); kept after erasure as attendance
+    boarded_at: v.optional(v.number()),
+    boarded_by: v.optional(v.id("users")),
     // Set when name/phone/email were erased under the retention rule (convex/privacy.ts)
     personal_data_erased_at: v.optional(v.number()),
     // Kept after erasure: keyed hash of phone_key (RIDER_KEY_SECRET), equal for the same phone

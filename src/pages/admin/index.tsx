@@ -31,7 +31,7 @@ type BookingRules = {
   personal_data_months: number
 }
 
-const NO_BOOKING_FILTERS = { payment: 'all', status: 'all', pickup: 'all', dropoff: 'all' }
+const NO_BOOKING_FILTERS = { payment: 'all', status: 'all', boarding: 'all', pickup: 'all', dropoff: 'all' }
 
 const byText = (pick: (b: Booking) => string | undefined) => (a: Booking, b: Booking) =>
   (pick(a) || '￿').localeCompare(pick(b) || '￿')
@@ -568,6 +568,9 @@ export default function AdminDashboard() {
     if (bookingFilters.payment !== 'all' && booking.payment_status !== bookingFilters.payment) return false
     if (bookingFilters.status === 'active' && booking.status === 'cancelled') return false
     if (bookingFilters.status === 'cancelled' && booking.status !== 'cancelled') return false
+    if (bookingFilters.boarding === 'boarded' && !booking.boarded_at) return false
+    // No-show: paid, not cancelled, never scanned
+    if (bookingFilters.boarding === 'no_show' && (booking.boarded_at || booking.payment_status !== 'paid' || booking.status === 'cancelled')) return false
     if (bookingFilters.pickup !== 'all' && booking.pickup_location !== bookingFilters.pickup) return false
     if (bookingFilters.dropoff !== 'all' && booking.dropoff_location !== bookingFilters.dropoff) return false
 
@@ -624,6 +627,10 @@ export default function AdminDashboard() {
   // Revenue = trip price × paid bookings, grouped by the trip's departure month
   const paidSeatsByTrip = allBookings.reduce<Record<string, number>>((acc, booking) => {
     if (booking.payment_status === 'paid') acc[booking.trip_id] = (acc[booking.trip_id] || 0) + 1
+    return acc
+  }, {})
+  const boardedByTrip = allBookings.reduce<Record<string, number>>((acc, booking) => {
+    if (booking.boarded_at) acc[booking.trip_id] = (acc[booking.trip_id] || 0) + 1
     return acc
   }, {})
   const paymentCounts = allBookings.reduce<Record<string, number>>((acc, booking) => {
@@ -962,12 +969,23 @@ export default function AdminDashboard() {
                           <p className="text-[10px] uppercase tracking-widest text-txt-muted">Revenue</p>
                           <p className="font-semibold text-[rgb(var(--warning))]">{formatCfa(revenueByTrip[trip.id] || 0)}</p>
                         </div>
+                        {boardedByTrip[trip.id] > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-txt-muted">Boarded</p>
+                            <p className="font-semibold text-[rgb(var(--success))]">{boardedByTrip[trip.id]}/{paidSeatsByTrip[trip.id] || 0}</p>
+                          </div>
+                        )}
                       </div>
                       </div>
                       <div className="flex flex-wrap gap-2 pt-3 border-t border-subtle">
                         <Button variant="outline" size="sm" onClick={() => viewTripBookings(trip.id)}>
                           Bookings
                         </Button>
+                        {editable && (
+                          <Button variant="outline" size="sm" onClick={() => router.push(`/admin/scan?trip=${trip.id}`)}>
+                            Scan tickets
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => openUpdates(trip.id)}>
                           Post update
                         </Button>
@@ -1102,10 +1120,11 @@ export default function AdminDashboard() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
             {([
               ['payment', 'Payment', [['paid', 'Paid'], ['pending', 'Not paid'], ['refunded', 'Refunded']]],
               ['status', 'Booking', [['active', 'Active'], ['cancelled', 'Cancelled']]],
+              ['boarding', 'Boarding', [['boarded', 'Boarded'], ['no_show', 'Not boarded (paid)']]],
               ['pickup', 'Pickup stop', stopsOf('pickup_location').map((s) => [s, s])],
               ['dropoff', 'Drop-off stop', stopsOf('dropoff_location').map((s) => [s, s])],
             ] as const).map(([key, label, options]) => (
