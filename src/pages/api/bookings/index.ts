@@ -49,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const token = getBearerToken(req);
       const email = String(req.body?.email || "").trim();
 
-      const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string; email?: string; pickup_location?: string } }>("bookings:create", {
+      const created = await convexMutation<{ booking: { id: string; trip_id: string; full_name?: string; phone?: string; email?: string; pickup_location?: string; ticket_token?: string } }>("bookings:create", {
         serverSecret: serverSecret(),
         clientKey: clientKey(req),
         sessionToken: token || undefined,
@@ -77,7 +77,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ]);
 
         const baseUrl = resolveBaseUrl(req);
-        const successUrl = `${baseUrl}/trips/${encodeURIComponent(tripId)}?payment=success`;
+        // Back from Naboopay, students land on their ticket, which confirms the payment
+        const successUrl = `${baseUrl}/ticket/${encodeURIComponent(String(created.booking.ticket_token || ""))}?payment=success`;
         const errorUrl = `${baseUrl}/trips/${encodeURIComponent(tripId)}?payment=error`;
 
         const checkout = await createNaboopayTransaction({

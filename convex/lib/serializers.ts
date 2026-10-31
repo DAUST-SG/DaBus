@@ -38,6 +38,7 @@ export const toPublicBooking = (booking: any, trip?: any) => ({
   email: booking.email,
   pickup_location: booking.pickup_location,
   dropoff_location: booking.dropoff_location,
+  ticket_token: booking.ticket_token,
   created_at: toIso(booking.created_at),
   trip: trip ? toPublicTrip(trip) : undefined,
 });

@@ -1,6 +1,7 @@
 import { mutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { flagRefund, flagSale } from "./ledger";
+import { flagRefund } from "./ledger";
+import { onBookingPaid } from "./tickets";
 import { syncSeats } from "./lib/seats";
 import { requireServer } from "./lib/guards";
 import { now } from "./lib/time";
@@ -64,7 +65,7 @@ export const processNaboopayWebhook = mutation({
 
     const reported = await ctx.db.get(booking._id);
     if (reported && paid && booking.payment_status !== "paid") {
-      await flagSale(ctx, reported);
+      await onBookingPaid(ctx, reported);
     }
     if (reported && failed && booking.payment_status === "paid") {
       await flagRefund(ctx, reported, "Payment reversed by Naboopay");

@@ -49,6 +49,8 @@ export interface Booking {
   phone?: string
   pickup_location?: string
   dropoff_location?: string
+  // Private link to the ticket page: /ticket/<ticket_token>
+  ticket_token?: string
   created_at: string
   trip?: Trip
 }
