@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import Button from '@/components/Button'
 import DatePicker from '@/components/DatePicker'
 import TimePicker from '@/components/TimePicker'
-import { DashboardStats, Trip, Booking, Checkpoint } from '@/types'
+import { DashboardStats, Trip, Booking, Checkpoint, TripUpdate } from '@/types'
 import { bookingsOpen, formatDakarTime, formatTripDate } from '@/lib/time'
 
 const TABS = [
@@ -14,9 +14,12 @@ const TABS = [
   { id: 'trips', label: 'Trips' },
   { id: 'bookings', label: 'Bookings' },
   { id: 'revenue', label: 'Revenue' },
+  { id: 'updates', label: 'Updates' },
   { id: 'settings', label: 'Settings' },
 ] as const
 type Tab = (typeof TABS)[number]['id']
+
+type AdminUpdate = TripUpdate & { trip_label: string | null; posted_by: string }
 
 type BookingRules = {
   max_unpaid_per_phone: number
@@ -27,6 +30,23 @@ type BookingRules = {
   auto_complete_hours: number
   personal_data_months: number
 }
+
+const NO_BOOKING_FILTERS = { payment: 'all', status: 'all', pickup: 'all', dropoff: 'all' }
+
+const byText = (pick: (b: Booking) => string | undefined) => (a: Booking, b: Booking) =>
+  (pick(a) || '￿').localeCompare(pick(b) || '￿')
+const tripKey = (b: Booking) => b.trip ? `${b.trip.departure_date}T${b.trip.departure_time}` : ''
+const BOOKING_SORTS = {
+  newest: { label: 'Newest booking first', compare: (a: Booking, b: Booking) => String(b.created_at).localeCompare(String(a.created_at)) },
+  oldest: { label: 'Oldest booking first', compare: (a: Booking, b: Booking) => String(a.created_at).localeCompare(String(b.created_at)) },
+  // Erased names ("(personal data erased)") go last, with the missing ones
+  name: { label: 'Name (A–Z)', compare: byText((b) => b.full_name?.startsWith('(') ? undefined : b.full_name) },
+  pickup: { label: 'Pickup stop', compare: byText((b) => b.pickup_location) },
+  dropoff: { label: 'Drop-off stop', compare: byText((b) => b.dropoff_location) },
+  departure: { label: 'Trip departure', compare: (a: Booking, b: Booking) => tripKey(a).localeCompare(tripKey(b)) },
+  payment: { label: 'Payment status', compare: byText((b) => b.payment_status) },
+}
+type BookingSort = keyof typeof BOOKING_SORTS
 
 const EMPTY_TRIP = {
   origin: '',
@@ -53,6 +73,11 @@ export default function AdminDashboard() {
   const [allBookings, setAllBookings] = useState<Booking[]>([])
   const [selectedTripId, setSelectedTripId] = useState('all')
   const [registrationQuery, setRegistrationQuery] = useState('')
+  const [bookingFilters, setBookingFilters] = useState(NO_BOOKING_FILTERS)
+  const [bookingSort, setBookingSort] = useState<BookingSort>('newest')
+  const [updates, setUpdates] = useState<AdminUpdate[]>([])
+  const [updateForm, setUpdateForm] = useState({ trip_id: '', message: '' })
+  const [postingUpdate, setPostingUpdate] = useState(false)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [updatingTripId, setUpdatingTripId] = useState<string | null>(null)
   const [refundingId, setRefundingId] = useState<string | null>(null)
@@ -281,6 +306,7 @@ export default function AdminDashboard() {
   const viewTripBookings = (tripId: string) => {
     setSelectedTripId(tripId)
     setRegistrationQuery('')
+    setBookingFilters(NO_BOOKING_FILTERS)
     setTab('bookings')
   }
 
@@ -432,6 +458,45 @@ export default function AdminDashboard() {
     (typeof err === 'object' && err && 'response' in err &&
       (err as { response?: { data?: { error?: string } } }).response?.data?.error) || fallback
 
+  const loadUpdates = async () => {
+    try {
+      const response = await api.get<{ success: boolean; data: AdminUpdate[] }>('/admin/updates')
+      if (response.data.success) setUpdates(response.data.data || [])
+    } catch (err) {
+      alert(apiError(err, 'Failed to load updates'))
+    }
+  }
+
+  const openUpdates = (tripId = '') => {
+    setUpdateForm({ trip_id: tripId, message: '' })
+    setTab('updates')
+    loadUpdates()
+  }
+
+  const handlePostUpdate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPostingUpdate(true)
+    try {
+      await api.post('/admin/updates', updateForm)
+      setUpdateForm({ ...updateForm, message: '' })
+      await loadUpdates()
+    } catch (err) {
+      alert(apiError(err, 'Failed to post update'))
+    } finally {
+      setPostingUpdate(false)
+    }
+  }
+
+  const handleDeleteUpdate = async (id: string) => {
+    if (!confirm('Delete this update? Passengers will no longer see it.')) return
+    try {
+      await api.delete(`/admin/updates?id=${encodeURIComponent(id)}`)
+      setUpdates(updates.filter((u) => u.id !== id))
+    } catch (err) {
+      alert(apiError(err, 'Failed to delete update'))
+    }
+  }
+
   const openCheckpoints = async () => {
     setShowCheckpoints(true)
     setCheckpointError(null)
@@ -496,10 +561,15 @@ export default function AdminDashboard() {
   }, {})
 
   const normalizedQuery = registrationQuery.trim().toLowerCase()
-  const filteredBookings = allBookings.filter((booking) => {
-    if (selectedTripId !== 'all' && booking.trip_id !== selectedTripId) {
-      return false
-    }
+  const tripBookings = allBookings.filter((b) => selectedTripId === 'all' || b.trip_id === selectedTripId)
+  const stopsOf = (key: 'pickup_location' | 'dropoff_location') =>
+    Array.from(new Set(tripBookings.map((b) => b[key]).filter(Boolean) as string[])).sort()
+  const filteredBookings = tripBookings.filter((booking) => {
+    if (bookingFilters.payment !== 'all' && booking.payment_status !== bookingFilters.payment) return false
+    if (bookingFilters.status === 'active' && booking.status === 'cancelled') return false
+    if (bookingFilters.status === 'cancelled' && booking.status !== 'cancelled') return false
+    if (bookingFilters.pickup !== 'all' && booking.pickup_location !== bookingFilters.pickup) return false
+    if (bookingFilters.dropoff !== 'all' && booking.dropoff_location !== bookingFilters.dropoff) return false
 
     if (!normalizedQuery) {
       return true
@@ -517,7 +587,8 @@ export default function AdminDashboard() {
       .toLowerCase()
 
     return searchable.includes(normalizedQuery)
-  })
+  }).sort(BOOKING_SORTS[bookingSort].compare)
+  const filtersActive = Object.values(bookingFilters).some((value) => value !== 'all') || !!normalizedQuery
 
   // Head count per stop for the selected trip, so the driver knows who to expect where
   const countByStop = (key: 'pickup_location' | 'dropoff_location') =>
@@ -705,7 +776,11 @@ export default function AdminDashboard() {
               type="button"
               role="tab"
               aria-selected={tab === t.id}
-              onClick={() => { setTab(t.id); if (t.id === 'settings' && !bookingRules) loadBookingRules() }}
+              onClick={() => {
+                if (t.id === 'updates') return openUpdates()
+                setTab(t.id)
+                if (t.id === 'settings' && !bookingRules) loadBookingRules()
+              }}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 tab === t.id
                   ? 'border-accent text-txt-primary'
@@ -893,6 +968,9 @@ export default function AdminDashboard() {
                         <Button variant="outline" size="sm" onClick={() => viewTripBookings(trip.id)}>
                           Bookings
                         </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openUpdates(trip.id)}>
+                          Post update
+                        </Button>
                         {editable && (
                           <>
                             <Button variant="ghost" size="sm" onClick={() => openEditTrip(trip)}>
@@ -1002,7 +1080,7 @@ export default function AdminDashboard() {
             <select
               className="input-dark md:w-80"
               value={selectedTripId}
-              onChange={(e) => setSelectedTripId(e.target.value)}
+              onChange={(e) => { setSelectedTripId(e.target.value); setBookingFilters(NO_BOOKING_FILTERS) }}
             >
               <option value="all">All trips</option>
               {allTrips.map((trip) => (
@@ -1023,6 +1101,40 @@ export default function AdminDashboard() {
                 onChange={(e) => setRegistrationQuery(e.target.value)}
               />
             </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+            {([
+              ['payment', 'Payment', [['paid', 'Paid'], ['pending', 'Not paid'], ['refunded', 'Refunded']]],
+              ['status', 'Booking', [['active', 'Active'], ['cancelled', 'Cancelled']]],
+              ['pickup', 'Pickup stop', stopsOf('pickup_location').map((s) => [s, s])],
+              ['dropoff', 'Drop-off stop', stopsOf('dropoff_location').map((s) => [s, s])],
+            ] as const).map(([key, label, options]) => (
+              <label key={key} className="block">
+                <span className="block text-[10px] font-semibold text-txt-muted uppercase tracking-widest mb-1">{label}</span>
+                <select
+                  className="input-dark"
+                  value={bookingFilters[key]}
+                  onChange={(e) => setBookingFilters({ ...bookingFilters, [key]: e.target.value })}
+                >
+                  <option value="all">All</option>
+                  {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+                </select>
+              </label>
+            ))}
+            <label className="block col-span-2 md:col-span-1">
+              <span className="block text-[10px] font-semibold text-txt-muted uppercase tracking-widest mb-1">Sort by</span>
+              <select className="input-dark" value={bookingSort} onChange={(e) => setBookingSort(e.target.value as BookingSort)}>
+                {Object.entries(BOOKING_SORTS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center justify-between gap-3 mb-4 text-xs text-txt-muted">
+            <span>{filteredBookings.length} of {tripBookings.length} booking{tripBookings.length === 1 ? '' : 's'}</span>
+            {filtersActive && (
+              <button type="button" className="text-accent hover:underline" onClick={() => { setBookingFilters(NO_BOOKING_FILTERS); setRegistrationQuery('') }}>
+                Clear filters
+              </button>
+            )}
           </div>
 
           {stopSummary.length > 0 && (
@@ -1199,6 +1311,65 @@ export default function AdminDashboard() {
             <p className="text-xs text-txt-muted">
               Revenue is each trip&apos;s current price × its paid bookings, grouped by departure month.
             </p>
+          </div>
+        )}
+
+        {tab === 'updates' && (
+          <div className="space-y-4">
+            <form onSubmit={handlePostUpdate} className="glass rounded-2xl p-4 sm:p-6 space-y-4">
+              <div>
+                <h2 className="font-display font-bold text-txt-primary">Post an update</h2>
+                <p className="text-xs text-txt-muted mt-1">
+                  Shown on the trip page and on passengers&apos; tickets. Updates &quot;for everyone&quot; also show on the home page.
+                </p>
+              </div>
+              <select
+                className="input-dark"
+                value={updateForm.trip_id}
+                onChange={(e) => setUpdateForm({ ...updateForm, trip_id: e.target.value })}
+              >
+                <option value="">For everyone</option>
+                {[...upcomingTrips, ...tripsNewestFirst.filter((t) => !upcomingTrips.includes(t))].map((trip) => (
+                  <option key={trip.id} value={trip.id}>
+                    {trip.origin} → {trip.destination} · {formatDeparture(trip)}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                className="input-dark min-h-[100px]"
+                maxLength={1000}
+                placeholder="e.g. The bus is 20 minutes late. Pickup at the main gate instead of the library."
+                value={updateForm.message}
+                onChange={(e) => setUpdateForm({ ...updateForm, message: e.target.value })}
+              />
+              <div className="flex justify-end">
+                <Button type="submit" size="sm" loading={postingUpdate} disabled={!updateForm.message.trim()}>
+                  Post update
+                </Button>
+              </div>
+            </form>
+
+            <div className="glass rounded-2xl p-4 sm:p-6">
+              <h2 className="font-display font-bold text-txt-primary mb-4">Posted updates</h2>
+              {updates.length === 0 ? (
+                <p className="text-sm text-txt-muted">No updates yet.</p>
+              ) : (
+                <ul className="divide-y divide-subtle">
+                  {updates.map((u) => (
+                    <li key={u.id} className="py-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold text-accent uppercase tracking-widest">{u.trip_label || 'For everyone'}</p>
+                        <p className="text-sm text-txt-primary whitespace-pre-line break-words mt-1">{u.message}</p>
+                        <p className="text-xs text-txt-muted mt-1">
+                          {formatTripDate(new Date(u.created_at).toISOString().slice(0, 10), { day: 'numeric', month: 'short' })} at {formatDakarTime(new Date(u.created_at).toISOString())} · {u.posted_by}
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteUpdate(u.id)}>Delete</Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 

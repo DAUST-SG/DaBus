@@ -6,6 +6,7 @@ import { flagSale } from "./ledger";
 import { generateSessionToken } from "./lib/validation";
 import { now } from "./lib/time";
 import { requireServer } from "./lib/guards";
+import { updatesFor } from "./updates";
 
 // Everything that should happen once when a booking becomes paid: report the sale to the
 // ledger and email the ticket. Called from the Naboopay webhook and from payment syncs.
@@ -50,7 +51,10 @@ export const byToken = query({
       .withIndex("by_ticket_token", (q) => q.eq("ticket_token", args.token))
       .unique();
     if (!booking) return null;
-    return toTicket(booking, await ctx.db.get(booking.trip_id));
+    return {
+      ...toTicket(booking, await ctx.db.get(booking.trip_id)),
+      updates: await updatesFor(ctx, booking.trip_id),
+    };
   },
 });
 
