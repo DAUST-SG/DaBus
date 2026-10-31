@@ -13,4 +13,7 @@ crons.interval("ledger retry", { minutes: 5 }, internal.ledger.flush, {});
 // Completes trips nobody marked completed, a set time after departure (Settings)
 crons.interval("auto-complete trips", { minutes: 15 }, internal.trips.autoComplete, {});
 
+// Erases passengers' personal data a set number of months after their trip (Settings)
+crons.daily("erase old personal data", { hourUTC: 3, minuteUTC: 0 }, internal.privacy.eraseOld, {});
+
 export default crons;

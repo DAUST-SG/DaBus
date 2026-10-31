@@ -30,6 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       refund_cutoff_hours: Number(req.body?.refund_cutoff_hours),
       default_booking_close_minutes: Number(req.body?.default_booking_close_minutes),
       auto_complete_hours: Number(req.body?.auto_complete_hours),
+      personal_data_months: Number(req.body?.personal_data_months),
     });
     return sendSuccess(res, data);
   } catch (error) {

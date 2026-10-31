@@ -11,6 +11,7 @@ const DEFAULTS = {
   refund_cutoff_hours: 3,
   default_booking_close_minutes: 30,
   auto_complete_hours: 12,
+  personal_data_months: 6,
 };
 
 export type Settings = typeof DEFAULTS;
@@ -27,6 +28,7 @@ const pick = (s: any): Settings => ({
   refund_cutoff_hours: s.refund_cutoff_hours,
   default_booking_close_minutes: s.default_booking_close_minutes,
   auto_complete_hours: s.auto_complete_hours,
+  personal_data_months: s.personal_data_months,
 });
 
 export const get = query({
@@ -52,6 +54,7 @@ export const update = mutation({
     refund_cutoff_hours: v.number(),
     default_booking_close_minutes: v.number(),
     auto_complete_hours: v.number(),
+    personal_data_months: v.number(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.sessionToken);
