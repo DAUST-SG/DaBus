@@ -2,12 +2,8 @@ import { internalAction, internalMutation, internalQuery } from "./_generated/se
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { now } from "./lib/time";
+import { departureMs, now } from "./lib/time";
 import { flagRefund } from "./ledger";
-
-// Trips store date and time as Dakar local time, which is UTC+0 all year
-const departureMs = (trip: Doc<"trips">) =>
-  Date.parse(`${trip.departure_date}T${trip.departure_time}:00Z`);
 
 const isPaidBooking = (b: Doc<"bookings">) => b.payment_status === "paid" && b.status !== "cancelled";
 
@@ -111,7 +107,8 @@ const naboopay = async (path: string) => {
 
 const sendReport = async (subject: string, html: string, to: string[]) => {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
+  // Student/admin notices come from the DaBus address; verification@ is only for sign-in links
+  const from = process.env.DABUS_FROM_EMAIL || process.env.RESEND_FROM_EMAIL;
   if (!apiKey || !from || to.length === 0) {
     console.warn(`Admin email not sent (Resend not configured or no admins): ${subject}`);
     return;

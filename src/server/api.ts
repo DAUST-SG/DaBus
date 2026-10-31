@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 export type SuccessPayload<T> = {
@@ -138,4 +139,12 @@ const extractNestedConvexError = (input: string): { status: number; message: str
     status: parsed.status || 500,
     message: parsed.message || "Internal server error",
   };
+};
+
+// Hash of the caller's IP for booking limits, so no raw IP is stored. On Vercel the first
+// x-forwarded-for entry is the real client address.
+export const clientKey = (req: NextApiRequest) => {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  const ip = forwarded || req.socket?.remoteAddress || "";
+  return ip ? createHash("sha256").update(`dabus:${ip}`).digest("hex").slice(0, 32) : undefined;
 };

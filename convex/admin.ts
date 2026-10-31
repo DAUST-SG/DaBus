@@ -113,6 +113,13 @@ export const updateBookingStatus = mutation({
       return toPublicBooking(booking, trip);
     }
 
+    if (args.status === "cancelled" && booking.payment_status === "paid" && !args.refundedViaNaboopay) {
+      throw new ConvexError({
+        status: 400,
+        message: "This booking is paid: use Refund so the money goes back, or Not paid if it was never paid.",
+      });
+    }
+
     let paymentStatus = booking.payment_status;
     if (args.status === "confirmed") {
       paymentStatus = "paid";

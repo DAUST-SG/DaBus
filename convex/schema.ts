@@ -100,6 +100,9 @@ export default defineSchema({
     ledger_error: v.optional(v.string()),
     // LEDGER_URL the sale/refund was accepted by, so they can be re-sent after switching ledgers
     ledger_target: v.optional(v.string()),
+    // For booking limits: last 9 digits of the phone, and a hash of the booker's IP
+    phone_key: v.optional(v.string()),
+    client_key: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
@@ -108,7 +111,9 @@ export default defineSchema({
     .index("by_user_id", ["user_id"])
     .index("by_status", ["status"])
     .index("by_created_at", ["created_at"])
-    .index("by_payment_id", ["payment_id"]),
+    .index("by_payment_id", ["payment_id"])
+    .index("by_phone_key", ["phone_key"])
+    .index("by_client_key", ["client_key"]),
 
   // Shared pickup/drop-off stops, matched to a trip by its origin/destination city
   checkpoints: defineTable({
@@ -118,6 +123,15 @@ export default defineSchema({
     created_at: v.number(),
     updated_at: v.number(),
   }).index("by_city", ["city"]),
+
+  // Single row of admin-editable rules; see convex/settings.ts for defaults
+  settings: defineTable({
+    max_unpaid_per_phone: v.number(),
+    max_bookings_per_window: v.number(),
+    booking_window_minutes: v.number(),
+    refund_cutoff_hours: v.number(),
+    updated_at: v.number(),
+  }),
 
   webhook_events: defineTable({
     source: v.string(),

@@ -5,7 +5,7 @@ import {
   sendError,
   sendSuccess,
 } from "@/server/api";
-import { convexMutation } from "@/server/convexClient";
+import { convexMutation, serverSecret } from "@/server/convexClient";
 import { verifyNaboopaySignature } from "@/server/naboopay";
 
 export const config = {
@@ -98,6 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const data = await convexMutation("webhooks:processNaboopayWebhook", {
+      serverSecret: serverSecret(),
       event_id: buildEventId(payload),
       order_id: payload.order_id ? String(payload.order_id) : undefined,
       transaction_status: String(payload.transaction_status || payload.status || ""),

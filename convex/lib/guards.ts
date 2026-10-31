@@ -83,3 +83,16 @@ export const requireBookingOwnerOrAdmin = async (
   }
   return user;
 };
+
+// For functions only our own Next.js server may call. It holds CONVEX_SERVER_SECRET (set in
+// both Vercel and Convex); the public Convex URL alone is not enough to call them.
+export const isServerCall = (secret?: string | null) => {
+  const expected = process.env.CONVEX_SERVER_SECRET;
+  return !!expected && !!secret && secret === expected;
+};
+
+export const requireServer = (secret?: string | null) => {
+  if (!isServerCall(secret)) {
+    forbidden("Not allowed");
+  }
+};
