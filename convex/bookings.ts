@@ -22,7 +22,10 @@ const resolveCheckpoint = async (ctx: any, city: string, chosen: string | undefi
 };
 
 // Last 9 digits, so "+221 77 123 45 67" and "771234567" count as the same phone
-const phoneKey = (phone: string) => phone.replace(/\D/g, "").slice(-9);
+const phoneKey = (phone: string) => {
+  const digits = phone.replace(/\D/g, "").slice(-9);
+  return digits.length >= 6 ? digits : phone.trim().toLowerCase();
+};
 
 // Called only by our booking API route, which passes the server secret and a hash of the caller's IP
 export const create = mutation({
@@ -66,8 +69,10 @@ export const create = mutation({
       .query("bookings")
       .withIndex("by_phone_key", (q) => q.eq("phone_key", phone_key))
       .collect();
+    // Admins booking on someone's behalf are never limited
+    const limited = user?.role !== "admin";
     const unpaidHolds = byPhone.filter((b) => b.status === "pending" && b.payment_status === "pending").length;
-    if (unpaidHolds >= settings.max_unpaid_per_phone) {
+    if (limited && unpaidHolds >= settings.max_unpaid_per_phone) {
       throw new ConvexError({
         status: 429,
         message: `You already have ${unpaidHolds} unpaid booking${unpaidHolds === 1 ? "" : "s"}. Pay or wait for one to expire (max 10 minutes), then try again.`,
@@ -83,7 +88,7 @@ export const create = mutation({
     const recent = new Set(
       [...byPhone, ...byClient].filter((b) => b.created_at >= windowStart).map((b) => b._id),
     ).size;
-    if (recent >= settings.max_bookings_per_window) {
+    if (limited && recent >= settings.max_bookings_per_window) {
       throw new ConvexError({
         status: 429,
         message: `Too many bookings in a short time. Please wait ${settings.booking_window_minutes} minutes and try again.`,
