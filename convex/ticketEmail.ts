@@ -30,7 +30,8 @@ export const sendTicketEmail = internalAction({
       weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Dakar",
     });
     const stops = [
-      ticket.pickup_location && `Pickup: <strong>${escapeHtml(ticket.pickup_location)}</strong>`,
+      ticket.pickup_location &&
+        `Pickup: <strong>${escapeHtml(ticket.pickup_location)}</strong>${ticket.pickup_time ? ` at <strong>${ticket.pickup_time}</strong>` : ""}`,
       ticket.dropoff_location && `Drop-off: <strong>${escapeHtml(ticket.dropoff_location)}</strong>`,
     ].filter(Boolean);
     const html = `

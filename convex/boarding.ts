@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
 import { now } from "./lib/time";
 import { ticketRef } from "./tickets";
+import { routeOrder } from "./checkpoints";
 
 // Seats that should board: paid and not cancelled
 const expected = (b: Doc<"bookings">) => b.payment_status === "paid" && b.status !== "cancelled";
@@ -22,8 +23,15 @@ export const tripSummary = query({
   args: { sessionToken: v.optional(v.string()), tripId: v.id("trips") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.sessionToken);
+    const trip = await ctx.db.get(args.tripId);
+    const order = trip ? await routeOrder(ctx, trip.origin) : {};
     const bookings = await ctx.db.query("bookings").withIndex("by_trip_id", (q) => q.eq("trip_id", args.tripId)).collect();
-    const passengers = bookings.filter(expected).map(passenger);
+    // In the order the bus reaches each pickup stop; no stop or an unknown one last
+    const stopIndex = (b: Doc<"bookings">) => order[b.pickup_location ?? ""] ?? Infinity;
+    const passengers = bookings
+      .filter(expected)
+      .sort((a, b) => stopIndex(a) - stopIndex(b) || (a.full_name ?? "").localeCompare(b.full_name ?? ""))
+      .map(passenger);
     return { boarded: passengers.filter((p) => p.boarded_at).length, expected: passengers.length, passengers };
   },
 });

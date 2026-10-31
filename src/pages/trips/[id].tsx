@@ -338,6 +338,7 @@ export default function TripDetailsPage() {
                       <StopPicker
                         label="Pickup Location"
                         options={pickupOptions}
+                        times={Object.fromEntries((trip.pickup_times || []).map((t) => [t.name, t.time]))}
                         value={customerInfo.pickup_location}
                         onChange={(name) => setCustomerInfo({ ...customerInfo, pickup_location: name })}
                       />
@@ -384,12 +385,17 @@ export default function TripDetailsPage() {
   )
 }
 
-function StopPicker({ label, options, value, onChange }: {
+function StopPicker({ label, options, times, value, onChange }: {
   label: string
   options: string[]
+  times?: Record<string, string>
   value: string
   onChange: (name: string) => void
 }) {
+  // A single stop needs no choice, but its time is still worth showing
+  if (options.length === 1 && times?.[options[0]]) {
+    return <p className="text-sm text-txt-secondary">{label}: <strong className="text-txt-primary">{options[0]}</strong> at {times[options[0]]}</p>
+  }
   if (options.length < 2) return null
   return (
     <div>
@@ -414,7 +420,8 @@ function StopPicker({ label, options, value, onChange }: {
             }`}>
               {value === name && <div className="w-2 h-2 rounded-full bg-accent" />}
             </div>
-            <span className="text-sm font-medium">{name}</span>
+            <span className="text-sm font-medium flex-1">{name}</span>
+            {times?.[name] && <span className="text-sm text-txt-muted tabular-nums">{times[name]}</span>}
           </button>
         ))}
       </div>

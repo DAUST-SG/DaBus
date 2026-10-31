@@ -33,6 +33,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return sendSuccess(res, data);
     }
 
+    if (req.body?.direction) {
+      return sendSuccess(res, await convexMutation("checkpoints:move", {
+        sessionToken: token,
+        checkpointId: String(req.body.id || ""),
+        direction: req.body.direction === "up" ? "up" : "down",
+      }));
+    }
+    if (req.body && "minutes_after_departure" in req.body) {
+      const minutes = req.body.minutes_after_departure;
+      return sendSuccess(res, await convexMutation("checkpoints:setMinutes", {
+        sessionToken: token,
+        checkpointId: String(req.body.id || ""),
+        minutes: minutes === "" || minutes === null ? null : Number(minutes),
+      }));
+    }
     const data = await convexMutation("checkpoints:setActive", {
       sessionToken: token,
       checkpointId: String(req.body?.id || ""),

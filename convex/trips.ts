@@ -2,7 +2,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { requireAdmin } from "./lib/guards";
 import { toPublicTrip } from "./lib/serializers";
-import { activeCheckpointNames } from "./checkpoints";
+import { activeCheckpointNames, pickupTimes } from "./checkpoints";
 import { bookingsCloseAt, departureMs, now } from "./lib/time";
 import { getSettings } from "./settings";
 import { seatsTaken, syncSeats } from "./lib/seats";
@@ -87,6 +87,8 @@ export const getById = query({
       ...withBookingWindow(trip, settings.default_booking_close_minutes),
       pickup_checkpoints: await activeCheckpointNames(ctx, trip.origin),
       dropoff_checkpoints: await activeCheckpointNames(ctx, trip.destination),
+      // A list, not an object: Convex field names can't contain accents ("Liberté 6")
+      pickup_times: Object.entries(await pickupTimes(ctx, trip)).map(([name, time]) => ({ name, time })),
       updates: await updatesFor(ctx, trip._id),
     };
   },

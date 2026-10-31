@@ -7,6 +7,7 @@ import { generateSessionToken } from "./lib/validation";
 import { now } from "./lib/time";
 import { requireServer } from "./lib/guards";
 import { updatesFor } from "./updates";
+import { pickupTimes } from "./checkpoints";
 
 // Everything that should happen once when a booking becomes paid: report the sale to the
 // ledger and email the ticket. Called from the Naboopay webhook and from payment syncs.
@@ -18,7 +19,7 @@ export const onBookingPaid = async (ctx: any, booking: Doc<"bookings">) => {
 // Short reference shown on tickets and read out at boarding, e.g. "J57F3K2A"
 export const ticketRef = (bookingId: string) => bookingId.slice(-8).toUpperCase();
 
-const toTicket = (booking: Doc<"bookings">, trip: Doc<"trips"> | null) => ({
+const toTicket = (booking: Doc<"bookings">, trip: Doc<"trips"> | null, pickupTime?: string) => ({
   booking_id: booking._id,
   ref: ticketRef(booking._id),
   token: booking.ticket_token,
@@ -28,6 +29,8 @@ const toTicket = (booking: Doc<"bookings">, trip: Doc<"trips"> | null) => ({
   has_payment: !!booking.payment_id,
   amount: booking.amount ?? trip?.price,
   pickup_location: booking.pickup_location,
+  // When the bus passes the pickup stop, if the stop has a time set (Settings → Checkpoints)
+  pickup_time: pickupTime,
   dropoff_location: booking.dropoff_location,
   trip: trip && {
     origin: trip.origin,
@@ -40,6 +43,9 @@ const toTicket = (booking: Doc<"bookings">, trip: Doc<"trips"> | null) => ({
 
 export type Ticket = ReturnType<typeof toTicket>;
 
+const pickupTimeOf = async (ctx: any, booking: Doc<"bookings">, trip: Doc<"trips"> | null) =>
+  trip && booking.pickup_location ? (await pickupTimes(ctx, trip))[booking.pickup_location] : undefined;
+
 // Public on purpose: the token is the access. It returns only what the ticket shows
 // (no phone or email).
 export const byToken = query({
@@ -51,8 +57,9 @@ export const byToken = query({
       .withIndex("by_ticket_token", (q) => q.eq("ticket_token", args.token))
       .unique();
     if (!booking) return null;
+    const trip = await ctx.db.get(booking.trip_id);
     return {
-      ...toTicket(booking, await ctx.db.get(booking.trip_id)),
+      ...toTicket(booking, trip, await pickupTimeOf(ctx, booking, trip)),
       updates: await updatesFor(ctx, booking.trip_id),
     };
   },
@@ -98,8 +105,9 @@ export const emailContext = internalQuery({
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) return null;
     const user = booking.user_id ? await ctx.db.get(booking.user_id) : null;
+    const trip = await ctx.db.get(booking.trip_id);
     return {
-      ticket: toTicket(booking, await ctx.db.get(booking.trip_id)),
+      ticket: toTicket(booking, trip, await pickupTimeOf(ctx, booking, trip)),
       email: booking.email || user?.email,
       alreadyEmailed: !!booking.ticket_emailed_at,
     };
