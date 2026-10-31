@@ -850,7 +850,8 @@ export default function AdminDashboard() {
                 {tripsNewestFirst.map((trip) => {
                   const editable = trip.status === 'scheduled' || trip.status === 'full'
                   return (
-                    <div key={trip.id} className="flex flex-col md:flex-row md:items-center gap-3 p-4 rounded-xl border border-subtle">
+                    <div key={trip.id} className="p-4 rounded-xl border border-subtle space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-txt-primary">
@@ -876,7 +877,7 @@ export default function AdminDashboard() {
                           )}
                         </p>
                       </div>
-                      <div className="flex gap-6 text-sm">
+                      <div className="flex gap-6 text-sm shrink-0">
                         <div>
                           <p className="text-[10px] uppercase tracking-widest text-txt-muted">Seats</p>
                           <p className="font-semibold text-txt-primary">{trip.capacity - trip.available_seats}/{trip.capacity}</p>
@@ -886,7 +887,8 @@ export default function AdminDashboard() {
                           <p className="font-semibold text-[rgb(var(--warning))]">{formatCfa(revenueByTrip[trip.id] || 0)}</p>
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-3 border-t border-subtle">
                         <Button variant="outline" size="sm" onClick={() => viewTripBookings(trip.id)}>
                           Bookings
                         </Button>
