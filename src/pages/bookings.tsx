@@ -5,6 +5,7 @@ import api from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import Button from '@/components/Button'
 import { Booking } from '@/types'
+import { formatTripDate } from '@/lib/time'
 
 export default function BookingsPage() {
   const router = useRouter()
@@ -151,7 +152,7 @@ export default function BookingsPage() {
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          {new Date(booking.trip.departure_date).toLocaleDateString()} at {booking.trip.departure_time}
+                          {formatTripDate(booking.trip.departure_date, { day: 'numeric', month: 'short', year: 'numeric' })} at {booking.trip.departure_time}
                         </p>
                       </>
                     )}

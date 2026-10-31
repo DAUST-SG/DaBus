@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
 import { getCurrentUser, isServerCall, requireBookingOwnerOrAdmin, requireServer, requireUser } from "./lib/guards";
 import { toPublicBooking } from "./lib/serializers";
-import { departureMs, now } from "./lib/time";
+import { bookingsCloseAt, departureMs, now } from "./lib/time";
 import { activeCheckpointNames } from "./checkpoints";
 import { flagRefund, flagSale } from "./ledger";
 import { getSettings } from "./settings";
@@ -64,6 +64,10 @@ export const create = mutation({
 
     // Limits stop scripts from holding seats with unpaid bookings; paid bookings are never limited
     const settings = await getSettings(ctx);
+    if (trip.bookings_closed || now() >= bookingsCloseAt(trip, settings.default_booking_close_minutes)) {
+      throw new ConvexError({ status: 400, message: "Bookings are closed for this trip" });
+    }
+
     const phone_key = phoneKey(args.phone);
     const byPhone = await ctx.db
       .query("bookings")

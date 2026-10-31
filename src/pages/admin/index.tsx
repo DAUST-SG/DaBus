@@ -7,6 +7,7 @@ import Button from '@/components/Button'
 import DatePicker from '@/components/DatePicker'
 import TimePicker from '@/components/TimePicker'
 import { DashboardStats, Trip, Booking, Checkpoint } from '@/types'
+import { bookingsOpen, formatDakarTime, formatTripDate } from '@/lib/time'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -22,6 +23,8 @@ type BookingRules = {
   max_bookings_per_window: number
   booking_window_minutes: number
   refund_cutoff_hours: number
+  default_booking_close_minutes: number
+  auto_complete_hours: number
 }
 
 const EMPTY_TRIP = {
@@ -31,6 +34,8 @@ const EMPTY_TRIP = {
   departure_time: '',
   capacity: 50,
   price: null as number | null,
+  // Empty = the default from Settings
+  booking_close_minutes: null as number | null,
   // Optional auto-cancel rule; both set or both empty
   min_seats: null as number | null,
   cutoff_hours: null as number | null,
@@ -132,12 +137,14 @@ export default function AdminDashboard() {
   }
 
   const openCreateTrip = () => {
+    if (!bookingRules) loadBookingRules()
     setEditingTripId(null)
     setNewTrip(EMPTY_TRIP)
     setShowCreateTrip(true)
   }
 
   const openEditTrip = (trip: Trip) => {
+    if (!bookingRules) loadBookingRules()
     setEditingTripId(trip.id)
     setNewTrip({
       origin: trip.origin,
@@ -148,6 +155,7 @@ export default function AdminDashboard() {
       price: trip.price,
       min_seats: trip.min_seats ?? null,
       cutoff_hours: trip.cutoff_hours ?? null,
+      booking_close_minutes: trip.booking_close_minutes ?? null,
     })
     setShowCreateTrip(true)
   }
@@ -238,20 +246,22 @@ export default function AdminDashboard() {
     }
   }
 
-  const setTripStatus = async (tripId: string, status: 'archived' | 'cancelled', question: string) => {
+  const updateTrip = async (tripId: string, body: Partial<Trip>, question: string) => {
     if (!confirm(question)) return
     try {
       setUpdatingTripId(tripId)
-      const response = await api.put<{ success: boolean }>(`/trips/${tripId}`, { status })
+      const response = await api.put<{ success: boolean }>(`/trips/${tripId}`, body)
       if (response.data.success) {
         fetchDashboardData()
       }
     } catch (err) {
-      alert(`Failed to ${status === 'archived' ? 'archive' : 'cancel'} trip`)
+      alert(apiError(err, 'Failed to update trip'))
     } finally {
       setUpdatingTripId(null)
     }
   }
+  const setTripStatus = (tripId: string, status: 'archived' | 'cancelled', question: string) =>
+    updateTrip(tripId, { status }, question)
 
   const handleArchiveTrip = (tripId: string) =>
     setTripStatus(tripId, 'archived', 'Archive this trip? It will be hidden from users.')
@@ -527,7 +537,7 @@ export default function AdminDashboard() {
   const departureKey = (trip: Trip) => `${trip.departure_date}T${trip.departure_time}`
   const formatCfa = (amount: number) => `${amount.toLocaleString()} CFA`
   const formatDeparture = (trip: Trip) =>
-    `${new Date(trip.departure_date).toLocaleDateString()} at ${trip.departure_time}`
+    `${formatTripDate(trip.departure_date, { day: 'numeric', month: 'short', year: 'numeric' })} at ${trip.departure_time}`
   const tripBadge = (status: Trip['status']) =>
     status === 'scheduled' ? 'badge-success' : status === 'full' ? 'badge-warning' : 'badge-neutral'
 
@@ -847,6 +857,17 @@ export default function AdminDashboard() {
                             {trip.origin} <span className="text-accent mx-1">&rarr;</span> {trip.destination}
                           </p>
                           <span className={`badge ${tripBadge(trip.status)}`}>{trip.status}</span>
+                          {editable && (
+                            bookingsOpen(trip) ? (
+                              <span className="text-xs text-txt-muted">
+                                Bookings open until {formatDakarTime(trip.bookings_close_at!)}
+                              </span>
+                            ) : (
+                              <span className="badge badge-neutral">
+                                Bookings closed{trip.bookings_closed ? '' : ' (deadline passed)'}
+                              </span>
+                            )
+                          )}
                         </div>
                         <p className="text-xs text-txt-muted mt-1">
                           {formatDeparture(trip)} · {formatCfa(trip.price)} per seat
@@ -873,6 +894,26 @@ export default function AdminDashboard() {
                           <>
                             <Button variant="ghost" size="sm" onClick={() => openEditTrip(trip)}>
                               Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={updatingTripId === trip.id}
+                              onClick={() =>
+                                trip.bookings_closed
+                                  ? updateTrip(trip.id, { bookings_closed: false }, 'Reopen bookings? Students can book again until the deadline.')
+                                  : updateTrip(trip.id, { bookings_closed: true }, 'Close bookings now? It stays closed until you reopen it, even if the departure time changes.')
+                              }
+                            >
+                              {trip.bookings_closed ? 'Reopen bookings' : 'Close bookings'}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={updatingTripId === trip.id}
+                              onClick={() => updateTrip(trip.id, { status: 'completed' }, 'Mark this trip as completed? It leaves the students\' list and stops taking bookings.')}
+                            >
+                              Mark completed
                             </Button>
                             <Button
                               variant="ghost"
@@ -1161,13 +1202,15 @@ export default function AdminDashboard() {
                     ['max_bookings_per_window', 'Bookings allowed per phone or device in the time window', '1'],
                     ['booking_window_minutes', 'Time window (minutes)', '1'],
                     ['refund_cutoff_hours', 'Students can cancel and get refunded until (hours before departure)', '0.5'],
+                    ['default_booking_close_minutes', 'Bookings close (minutes before departure), for trips without their own setting', '5'],
+                    ['auto_complete_hours', 'Mark trips completed automatically (hours after departure), if nobody does', '1'],
                   ] as const).map(([key, label, step]) => (
                     <label key={key} className="block">
                       <span className="block text-xs font-medium text-txt-secondary mb-1.5">{label}</span>
                       <input
                         type="number"
                         required
-                        min={key === 'refund_cutoff_hours' ? 0 : 1}
+                        min={key === 'refund_cutoff_hours' || key === 'default_booking_close_minutes' ? 0 : 1}
                         step={step}
                         className="input-dark"
                         value={bookingRules[key]}
@@ -1320,6 +1363,23 @@ export default function AdminDashboard() {
                       onChange={(e) => setNewTrip({ ...newTrip, price: e.target.value ? parseInt(e.target.value) : null })}
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">
+                    Bookings close (minutes before departure)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="5"
+                    className="input-dark"
+                    placeholder={`Default: ${bookingRules?.default_booking_close_minutes ?? 30} (Settings)`}
+                    value={newTrip.booking_close_minutes ?? ''}
+                    onChange={(e) => setNewTrip({ ...newTrip, booking_close_minutes: e.target.value === '' ? null : Number(e.target.value) })}
+                  />
+                  <p className="mt-1 text-xs text-txt-muted">
+                    Follows the departure time: if the bus is late and you move the departure, the deadline moves too.
+                  </p>
                 </div>
                 <div className="rounded-xl border border-subtle p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">

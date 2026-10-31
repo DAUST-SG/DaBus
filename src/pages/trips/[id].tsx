@@ -6,6 +6,7 @@ import api from '@/lib/api'
 import Button from '@/components/Button'
 import { useAuth } from '@/context/AuthContext'
 import { Trip } from '@/types'
+import { bookingsOpen, formatDakarTime, formatTripDate } from '@/lib/time'
 
 export default function TripDetailsPage() {
   const router = useRouter()
@@ -107,14 +108,8 @@ export default function TripDetailsPage() {
   const pickupOptions = trip?.pickup_checkpoints || []
   const dropoffOptions = trip?.dropoff_checkpoints || []
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-  }
+  const formatDate = (dateStr: string) =>
+    formatTripDate(dateStr, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
   if (loading) {
     return (
@@ -258,7 +253,7 @@ export default function TripDetailsPage() {
             )}
 
             {/* Booking Section */}
-            {trip.available_seats > 0 && trip.status === 'scheduled' && (
+            {trip.available_seats > 0 && bookingsOpen(trip) && (
               <div className="pt-4 border-t border-subtle">
                 {!showForm ? (
                   <div className="space-y-4">
@@ -273,6 +268,11 @@ export default function TripDetailsPage() {
                         <p className="text-xs text-txt-muted mt-0.5">
                           You&apos;ll be redirected to complete payment of {trip.price.toLocaleString()} CFA
                         </p>
+                        {trip.bookings_close_at && (
+                          <p className="text-xs text-txt-muted mt-0.5">
+                            Bookings close at {formatDakarTime(trip.bookings_close_at)} (Dakar time)
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -364,6 +364,13 @@ export default function TripDetailsPage() {
                     </form>
                   </div>
                 )}
+              </div>
+            )}
+
+            {trip.available_seats > 0 && !bookingsOpen(trip) && (trip.status === 'scheduled' || trip.status === 'full') && (
+              <div className="pt-4 border-t border-subtle">
+                <p className="text-sm font-medium text-txt-primary">Bookings are closed for this trip</p>
+                <p className="text-xs text-txt-muted mt-1">If you need a seat, contact the DaBus team.</p>
               </div>
             )}
           </div>

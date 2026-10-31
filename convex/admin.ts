@@ -7,6 +7,8 @@ import { toPublicBooking, toPublicTrip, toPublicUser } from "./lib/serializers";
 import { now } from "./lib/time";
 import { flagRefund, flagSale } from "./ledger";
 import { syncSeats } from "./lib/seats";
+import { getSettings } from "./settings";
+import { withBookingWindow } from "./trips";
 import {
   assertRequiredText,
   assertStrongPassword,
@@ -64,7 +66,8 @@ export const listTrips = query({
 
     const trips = await ctx.db.query("trips").collect();
     trips.sort((a: any, b: any) => b.created_at - a.created_at);
-    return trips.map(toPublicTrip);
+    const { default_booking_close_minutes } = await getSettings(ctx);
+    return trips.map((trip) => withBookingWindow(trip, default_booking_close_minutes));
   },
 });
 

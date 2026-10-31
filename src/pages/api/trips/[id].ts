@@ -47,6 +47,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         price: req.body?.price,
         min_seats: optionalNumber(req.body?.min_seats),
         cutoff_hours: optionalNumber(req.body?.cutoff_hours),
+        booking_close_minutes: optionalNumber(req.body?.booking_close_minutes),
+        bookings_closed: typeof req.body?.bookings_closed === "boolean" ? req.body.bookings_closed : undefined,
         status: req.body?.status,
       });
       return sendSuccess(res, data);

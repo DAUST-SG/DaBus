@@ -9,6 +9,8 @@ const DEFAULTS = {
   max_bookings_per_window: 10,
   booking_window_minutes: 10,
   refund_cutoff_hours: 3,
+  default_booking_close_minutes: 30,
+  auto_complete_hours: 12,
 };
 
 export type Settings = typeof DEFAULTS;
@@ -23,6 +25,8 @@ const pick = (s: any): Settings => ({
   max_bookings_per_window: s.max_bookings_per_window,
   booking_window_minutes: s.booking_window_minutes,
   refund_cutoff_hours: s.refund_cutoff_hours,
+  default_booking_close_minutes: s.default_booking_close_minutes,
+  auto_complete_hours: s.auto_complete_hours,
 });
 
 export const get = query({
@@ -46,12 +50,16 @@ export const update = mutation({
     max_bookings_per_window: v.number(),
     booking_window_minutes: v.number(),
     refund_cutoff_hours: v.number(),
+    default_booking_close_minutes: v.number(),
+    auto_complete_hours: v.number(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.sessionToken);
     const { sessionToken: _, ...values } = args;
     for (const [key, value] of Object.entries(values)) {
-      const ok = key === "refund_cutoff_hours" ? value >= 0 : Number.isInteger(value) && value >= 1;
+      // Hours and minutes may be 0 ("at departure"); counts must be at least 1
+      const zeroOk = key === "refund_cutoff_hours" || key === "default_booking_close_minutes";
+      const ok = zeroOk ? value >= 0 : Number.isInteger(value) && value >= 1;
       if (!ok) {
         throw new ConvexError({ status: 400, message: `Invalid value for ${key.replace(/_/g, " ")}` });
       }
