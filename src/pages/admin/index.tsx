@@ -6,8 +6,13 @@ import { useAuth } from '@/context/AuthContext'
 import Button from '@/components/Button'
 import DatePicker from '@/components/DatePicker'
 import TimePicker from '@/components/TimePicker'
-import { DashboardStats, Trip, Booking, Checkpoint, TripUpdate } from '@/types'
-import { bookingsOpen, formatDakarTime, formatTripDate } from '@/lib/time'
+import { DashboardStats, Trip, Booking } from '@/types'
+import { bookingsOpen, formatDakarTime } from '@/lib/time'
+import SettingsTab from '@/components/admin/SettingsTab'
+import UpdatesTab from '@/components/admin/UpdatesTab'
+import RevenueTab from '@/components/admin/RevenueTab'
+import BookingsTab from '@/components/admin/BookingsTab'
+import { apiError, BookingRules, formatCfa, formatDeparture, tripBadge } from '@/components/admin/shared'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -19,47 +24,6 @@ const TABS = [
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
-type AdminUpdate = TripUpdate & { trip_label: string | null; posted_by: string }
-
-type BookingRules = {
-  max_unpaid_per_phone: number
-  max_bookings_per_window: number
-  booking_window_minutes: number
-  refund_cutoff_hours: number
-  default_booking_close_minutes: number
-  auto_complete_hours: number
-  personal_data_months: number
-  payment_fee_percent: number
-}
-
-// One choice of which bookings to show (stops are filtered by clicking them in the stop summary)
-const BOOKING_VIEWS = {
-  all: { label: 'All', match: (_: Booking) => true },
-  paid: { label: 'Paid', match: (b: Booking) => b.payment_status === 'paid' && b.status !== 'cancelled' },
-  unpaid: { label: 'Not paid', match: (b: Booking) => b.payment_status === 'pending' && b.status !== 'cancelled' },
-  cancelled: { label: 'Cancelled', match: (b: Booking) => b.status === 'cancelled' },
-  refunded: { label: 'Refunded', match: (b: Booking) => b.payment_status === 'refunded' },
-  boarded: { label: 'Boarded', match: (b: Booking) => !!b.boarded_at },
-  no_show: { label: 'Not boarded', match: (b: Booking) => b.payment_status === 'paid' && b.status !== 'cancelled' && !b.boarded_at },
-}
-type BookingView = keyof typeof BOOKING_VIEWS
-
-// Sorting by clicking a column header; empty values (and erased names) always go last
-const SORT_VALUES = {
-  trip: (b: Booking) => b.trip ? `${b.trip.departure_date}T${b.trip.departure_time}` : '',
-  name: (b: Booking) => b.full_name?.startsWith('(') ? '' : b.full_name || '',
-  pickup: (b: Booking) => b.pickup_location || '',
-  dropoff: (b: Booking) => b.dropoff_location || '',
-  booked: (b: Booking) => String(b.created_at),
-  status: (b: Booking) => b.payment_status,
-}
-type SortKey = keyof typeof SORT_VALUES
-const compareBy = ({ key, desc }: { key: SortKey; desc: boolean }) => (a: Booking, b: Booking) => {
-  const x = SORT_VALUES[key](a)
-  const y = SORT_VALUES[key](b)
-  if (!x || !y) return x ? -1 : y ? 1 : 0
-  return (desc ? -1 : 1) * x.localeCompare(y)
-}
 
 const EMPTY_TRIP = {
   origin: '',
@@ -84,18 +48,13 @@ export default function AdminDashboard() {
   const [showArchived, setShowArchived] = useState(false)
   const [recentBookings, setRecentBookings] = useState<Booking[]>([])
   const [allBookings, setAllBookings] = useState<Booking[]>([])
-  const [selectedTripId, setSelectedTripId] = useState('all')
-  const [registrationQuery, setRegistrationQuery] = useState('')
-  const [bookingView, setBookingView] = useState<BookingView>('all')
-  const [bookingSort, setBookingSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'booked', desc: true })
-  const [updates, setUpdates] = useState<AdminUpdate[]>([])
-  const [updateForm, setUpdateForm] = useState({ trip_id: '', message: '' })
-  const [postingUpdate, setPostingUpdate] = useState(false)
+  // Trip preselected in the Bookings tab ("all" = every trip)
+  const [bookingsTripId, setBookingsTripId] = useState('all')
+  const [updatesTripId, setUpdatesTripId] = useState('')
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [updatingTripId, setUpdatingTripId] = useState<string | null>(null)
   const [refundingId, setRefundingId] = useState<string | null>(null)
   const [syncingId, setSyncingId] = useState<string | null>(null)
-  const [syncingAll, setSyncingAll] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -105,36 +64,12 @@ export default function AdminDashboard() {
   const [editingTripId, setEditingTripId] = useState<string | null>(null)
   const [creatingTrip, setCreatingTrip] = useState(false)
 
-  // Export modal state
-  const [showExport, setShowExport] = useState(false)
-  const [exportTripId, setExportTripId] = useState('all')
-  const [exportingBookings, setExportingBookings] = useState(false)
 
-  // Add Admin modal state
-  const [showAddAdmin, setShowAddAdmin] = useState(false)
-  const [newAdmin, setNewAdmin] = useState({ email: '', full_name: '', phone: '', password: '' })
-  const [addingAdmin, setAddingAdmin] = useState(false)
-  const [addAdminError, setAddAdminError] = useState<string | null>(null)
-  const [addAdminSuccess, setAddAdminSuccess] = useState(false)
 
-  // Change Password modal state
-  const [showChangePassword, setShowChangePassword] = useState(false)
-  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '', confirm_password: '' })
-  const [changingPassword, setChangingPassword] = useState(false)
-  const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
-  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false)
 
-  // Checkpoints
-  const [showCheckpoints, setShowCheckpoints] = useState(false)
 
   // Booking rules (Settings tab)
   const [bookingRules, setBookingRules] = useState<BookingRules | null>(null)
-  const [savingRules, setSavingRules] = useState(false)
-  const [rulesMessage, setRulesMessage] = useState<string | null>(null)
-  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
-  const [newCheckpoint, setNewCheckpoint] = useState({ name: '', city: '' })
-  const [savingCheckpoint, setSavingCheckpoint] = useState(false)
-  const [checkpointError, setCheckpointError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== 'admin')) {
@@ -261,30 +196,6 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleExportBookings = async () => {
-    setExportingBookings(true)
-    try {
-      const params = new URLSearchParams({ paid_only: 'true' })
-      if (exportTripId !== 'all') params.set('trip_id', exportTripId)
-      const response = await api.get<Blob>(`/admin/export/bookings?${params.toString()}`, { responseType: 'blob' })
-      const tripLabel = exportTripId !== 'all'
-        ? allTrips.find((t) => t.id === exportTripId)?.departure_date || exportTripId
-        : 'all'
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `bookings_${tripLabel}_paid.csv`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      setShowExport(false)
-    } catch {
-      alert('Failed to export bookings')
-    } finally {
-      setExportingBookings(false)
-    }
-  }
-
   const updateTrip = async (tripId: string, body: Partial<Trip>, question: string) => {
     if (!confirm(question)) return
     try {
@@ -317,9 +228,7 @@ export default function AdminDashboard() {
   }
 
   const viewTripBookings = (tripId: string) => {
-    setSelectedTripId(tripId)
-    setRegistrationQuery('')
-    setBookingView('all')
+    setBookingsTripId(tripId)
     setTab('bookings')
   }
 
@@ -346,26 +255,6 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleSyncAll = async () => {
-    if (!confirm('Sync all eligible bookings with Naboopay? This may take a moment.')) return
-    try {
-      setSyncMessage(null)
-      setSyncingAll(true)
-      const response = await api.post<{ success: boolean; data: { total: number; updated: number; unchanged: number; errors: number } }>(`/admin/bookings/sync-all`)
-      if (response.data.success) {
-        const { total, updated, unchanged, errors } = response.data.data
-        setSyncMessage(`Synced ${total} bookings — ${updated} updated, ${unchanged} unchanged, ${errors} errors`)
-        fetchDashboardData()
-      }
-    } catch (err: unknown) {
-      const errorMessage = typeof err === 'object' && err && 'response' in err &&
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to sync bookings'
-      setSyncMessage(`Sync failed: ${errorMessage}`)
-    } finally {
-      setSyncingAll(false)
-    }
-  }
-
   const handleRefundBooking = async (bookingId: string) => {
     if (!confirm('Refund this booking? This will call Naboopay refund and cancel the booking.')) return
     try {
@@ -388,181 +277,15 @@ export default function AdminDashboard() {
       const response = await api.get<{ success: boolean; data: BookingRules }>('/admin/settings')
       if (response.data.success) setBookingRules(response.data.data)
     } catch {
-      setRulesMessage('Failed to load booking rules')
+      // Only used for the "Default: N" hint in the trip form
     }
   }
 
-  const handleSaveRules = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!bookingRules) return
-    setSavingRules(true)
-    setRulesMessage(null)
-    try {
-      const response = await api.put<{ success: boolean; data: BookingRules }>('/admin/settings', bookingRules)
-      if (response.data.success) {
-        setBookingRules(response.data.data)
-        setRulesMessage('Saved')
-      }
-    } catch (err: unknown) {
-      setRulesMessage(apiError(err, 'Failed to save booking rules'))
-    } finally {
-      setSavingRules(false)
-    }
-  }
 
-  const handleAddAdmin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setAddAdminError(null)
-    setAddAdminSuccess(false)
-    setAddingAdmin(true)
-    try {
-      const response = await api.post<{ success: boolean }>('/admin/members', newAdmin)
-      if (response.data.success) {
-        setAddAdminSuccess(true)
-        setNewAdmin({ email: '', full_name: '', phone: '', password: '' })
-        setTimeout(() => {
-          setShowAddAdmin(false)
-          setAddAdminSuccess(false)
-        }, 1500)
-      }
-    } catch (err: unknown) {
-      const errorMessage = typeof err === 'object' && err && 'response' in err &&
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to add admin'
-      setAddAdminError(errorMessage)
-    } finally {
-      setAddingAdmin(false)
-    }
-  }
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setChangePasswordError(null)
-    setChangePasswordSuccess(false)
-
-    if (passwordForm.new_password !== passwordForm.confirm_password) {
-      setChangePasswordError('New passwords do not match')
-      return
-    }
-
-    setChangingPassword(true)
-    try {
-      const response = await api.post<{ success: boolean }>('/admin/change-password', {
-        current_password: passwordForm.current_password,
-        new_password: passwordForm.new_password,
-      })
-      if (response.data.success) {
-        setChangePasswordSuccess(true)
-        setPasswordForm({ current_password: '', new_password: '', confirm_password: '' })
-        setTimeout(() => {
-          setShowChangePassword(false)
-          setChangePasswordSuccess(false)
-        }, 1500)
-      }
-    } catch (err: unknown) {
-      const errorMessage = typeof err === 'object' && err && 'response' in err &&
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to change password'
-      setChangePasswordError(errorMessage)
-    } finally {
-      setChangingPassword(false)
-    }
-  }
-
-  const apiError = (err: unknown, fallback: string) =>
-    (typeof err === 'object' && err && 'response' in err &&
-      (err as { response?: { data?: { error?: string } } }).response?.data?.error) || fallback
-
-  const loadUpdates = async () => {
-    try {
-      const response = await api.get<{ success: boolean; data: AdminUpdate[] }>('/admin/updates')
-      if (response.data.success) setUpdates(response.data.data || [])
-    } catch (err) {
-      alert(apiError(err, 'Failed to load updates'))
-    }
-  }
-
+  // The Updates tab, optionally with a trip preselected
   const openUpdates = (tripId = '') => {
-    setUpdateForm({ trip_id: tripId, message: '' })
+    setUpdatesTripId(tripId)
     setTab('updates')
-    loadUpdates()
-  }
-
-  const handlePostUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setPostingUpdate(true)
-    try {
-      await api.post('/admin/updates', updateForm)
-      setUpdateForm({ ...updateForm, message: '' })
-      await loadUpdates()
-    } catch (err) {
-      alert(apiError(err, 'Failed to post update'))
-    } finally {
-      setPostingUpdate(false)
-    }
-  }
-
-  const handleDeleteUpdate = async (id: string) => {
-    if (!confirm('Delete this update? Passengers will no longer see it.')) return
-    try {
-      await api.delete(`/admin/updates?id=${encodeURIComponent(id)}`)
-      setUpdates(updates.filter((u) => u.id !== id))
-    } catch (err) {
-      alert(apiError(err, 'Failed to delete update'))
-    }
-  }
-
-  const openCheckpoints = async () => {
-    setShowCheckpoints(true)
-    setCheckpointError(null)
-    try {
-      const response = await api.get<{ success: boolean; data: Checkpoint[] }>('/admin/checkpoints')
-      if (response.data.success) setCheckpoints(response.data.data)
-    } catch (err) {
-      setCheckpointError(apiError(err, 'Failed to load checkpoints'))
-    }
-  }
-
-  const handleAddCheckpoint = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSavingCheckpoint(true)
-    setCheckpointError(null)
-    try {
-      const response = await api.post<{ success: boolean; data: Checkpoint }>('/admin/checkpoints', newCheckpoint)
-      if (response.data.success) {
-        setCheckpoints([...checkpoints, response.data.data])
-        setNewCheckpoint({ name: '', city: newCheckpoint.city })
-      }
-    } catch (err) {
-      setCheckpointError(apiError(err, 'Failed to add checkpoint'))
-    } finally {
-      setSavingCheckpoint(false)
-    }
-  }
-
-  // Reorder (direction) or set the pickup time offset, then reload the list in its new order
-  const handleCheckpointChange = async (checkpoint: Checkpoint, change: { direction: 'up' | 'down' } | { minutes_after_departure: string }) => {
-    setCheckpointError(null)
-    try {
-      await api.patch('/admin/checkpoints', { id: checkpoint.id, ...change })
-      const response = await api.get<{ success: boolean; data: Checkpoint[] }>('/admin/checkpoints')
-      if (response.data.success) setCheckpoints(response.data.data)
-    } catch (err) {
-      setCheckpointError(apiError(err, 'Failed to update checkpoint'))
-    }
-  }
-
-  const handleToggleCheckpoint = async (checkpoint: Checkpoint) => {
-    setCheckpointError(null)
-    try {
-      const response = await api.patch<{ success: boolean; data: Checkpoint }>('/admin/checkpoints', {
-        id: checkpoint.id,
-        active: !checkpoint.active,
-      })
-      if (response.data.success) {
-        setCheckpoints(checkpoints.map((c) => (c.id === checkpoint.id ? response.data.data : c)))
-      }
-    } catch (err) {
-      setCheckpointError(apiError(err, 'Failed to update checkpoint'))
-    }
   }
 
   if (authLoading || loading) {
@@ -585,64 +308,7 @@ export default function AdminDashboard() {
     return acc
   }, {})
 
-  const normalizedQuery = registrationQuery.trim().toLowerCase()
-  const tripBookings = allBookings.filter((b) => selectedTripId === 'all' || b.trip_id === selectedTripId)
-  const filteredBookings = tripBookings.filter((booking) => {
-    if (!BOOKING_VIEWS[bookingView].match(booking)) return false
-
-    if (!normalizedQuery) {
-      return true
-    }
-
-    const searchable = [
-      booking.full_name || '',
-      booking.phone || '',
-      booking.trip?.origin || '',
-      booking.trip?.destination || '',
-      booking.pickup_location || '',
-      booking.dropoff_location || '',
-    ]
-      .join(' ')
-      .toLowerCase()
-
-    return searchable.includes(normalizedQuery)
-  }).sort(compareBy(bookingSort))
-  const filtersActive = bookingView !== 'all' || !!normalizedQuery
-  // Clicking the sorted column again flips the direction
-  const sortHeader = (key: SortKey, label: string, className = 'px-4') => (
-    <th className={`${className} py-3 text-left`}>
-      <button
-        type="button"
-        onClick={() => setBookingSort({ key, desc: bookingSort.key === key ? !bookingSort.desc : key === 'booked' })}
-        className={`text-[10px] font-semibold uppercase tracking-widest hover:text-txt-primary ${bookingSort.key === key ? 'text-accent' : 'text-txt-muted'}`}
-      >
-        {label}{bookingSort.key === key ? (bookingSort.desc ? ' ↓' : ' ↑') : ''}
-      </button>
-    </th>
-  )
-
-  // Head count per stop for the selected trip, so the driver knows who to expect where
-  const countByStop = (key: 'pickup_location' | 'dropoff_location') =>
-    Object.entries(
-      filteredBookings
-        .filter((b) => b.status !== 'cancelled' && b[key])
-        .reduce<Record<string, number>>((acc, b) => {
-          acc[b[key] as string] = (acc[b[key] as string] || 0) + 1
-          return acc
-        }, {}),
-    ).sort((a, b) => b[1] - a[1])
-  const stopSummary = selectedTripId === 'all' ? [] : [
-    { label: 'Pickup', counts: countByStop('pickup_location') },
-    { label: 'Drop-off', counts: countByStop('dropoff_location') },
-  ].filter((group) => group.counts.length > 0)
-
-  const tripsById = new Map(allTrips.map((trip) => [trip.id, trip]))
   const departureKey = (trip: Trip) => `${trip.departure_date}T${trip.departure_time}`
-  const formatCfa = (amount: number) => `${amount.toLocaleString()} CFA`
-  const formatDeparture = (trip: Trip) =>
-    `${formatTripDate(trip.departure_date, { day: 'numeric', month: 'short', year: 'numeric' })} at ${trip.departure_time}`
-  const tripBadge = (status: Trip['status']) =>
-    status === 'scheduled' ? 'badge-success' : status === 'full' ? 'badge-warning' : 'badge-neutral'
 
   const today = new Date().toISOString().slice(0, 10)
   const upcomingTrips = allTrips
@@ -661,27 +327,6 @@ export default function AdminDashboard() {
     if (booking.boarded_at) acc[booking.trip_id] = (acc[booking.trip_id] || 0) + 1
     return acc
   }, {})
-  const paymentCounts = allBookings.reduce<Record<string, number>>((acc, booking) => {
-    acc[booking.payment_status] = (acc[booking.payment_status] || 0) + 1
-    return acc
-  }, {})
-  const revenueByMonth = Object.entries(
-    allBookings.reduce<Record<string, { seats: number; amount: number }>>((acc, booking) => {
-      const trip = tripsById.get(booking.trip_id)
-      if (booking.payment_status !== 'paid' || !trip) return acc
-      const month = trip.departure_date.slice(0, 7)
-      acc[month] = acc[month] || { seats: 0, amount: 0 }
-      acc[month].seats += 1
-      acc[month].amount += trip.price
-      return acc
-    }, {}),
-  ).sort((a, b) => b[0].localeCompare(a[0]))
-  const revenueTrips = allTrips
-    .filter((trip) => paidSeatsByTrip[trip.id])
-    .sort((a, b) => departureKey(b).localeCompare(departureKey(a)))
-  const monthLabel = (month: string) =>
-    new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-
   const renderBookingStatus = (booking: Booking) => (
     <div className="flex flex-col gap-1.5">
       <span className={`badge ${booking.status === 'confirmed' ? 'badge-success' :
@@ -814,7 +459,6 @@ export default function AdminDashboard() {
               onClick={() => {
                 if (t.id === 'updates') return openUpdates()
                 setTab(t.id)
-                if (t.id === 'settings' && !bookingRules) loadBookingRules()
               }}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 tab === t.id
@@ -1088,436 +732,38 @@ export default function AdminDashboard() {
         )}
 
         {tab === 'bookings' && (
-        <div className="glass rounded-2xl p-4 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h2 className="font-display font-bold text-txt-primary">Trip Registrations</h2>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="ghost" size="sm" onClick={() => { setExportTripId(selectedTripId); setShowExport(true) }}>
-                Export CSV
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                loading={syncingAll}
-                onClick={handleSyncAll}
-                title="Query Naboopay for the latest payment status of every booking"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Sync from Naboopay
-              </Button>
-            </div>
-          </div>
-          {syncMessage && (
-            <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--info),0.08)] border border-[rgba(var(--info),0.2)] text-[rgb(var(--info))] text-sm flex items-start justify-between gap-3">
-              <span>{syncMessage}</span>
-              <button
-                type="button"
-                onClick={() => setSyncMessage(null)}
-                className="text-txt-muted hover:text-txt-primary"
-                aria-label="Dismiss"
-              >
-                ×
-              </button>
-            </div>
-          )}
-          <div className="flex flex-col md:flex-row gap-3 mb-5">
-            <select
-              className="input-dark md:w-80"
-              value={selectedTripId}
-              onChange={(e) => { setSelectedTripId(e.target.value); setBookingView('all') }}
-            >
-              <option value="all">All trips</option>
-              {allTrips.map((trip) => (
-                <option key={trip.id} value={trip.id}>
-                  {trip.origin} &rarr; {trip.destination} ({new Date(trip.departure_date).toLocaleDateString()})
-                </option>
-              ))}
-            </select>
-            <div className="flex-1 relative">
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-txt-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                className="input-dark pl-10"
-                placeholder="Search passengers..."
-                value={registrationQuery}
-                onChange={(e) => setRegistrationQuery(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {(Object.entries(BOOKING_VIEWS) as [BookingView, (typeof BOOKING_VIEWS)[BookingView]][]).map(([view, { label, match }]) => (
-              <button
-                key={view}
-                type="button"
-                onClick={() => setBookingView(view)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  bookingView === view
-                    ? 'bg-accent text-surface-primary border-accent'
-                    : 'border-subtle text-txt-secondary hover:text-txt-primary'
-                }`}
-              >
-                {label} <span className="opacity-70">{tripBookings.filter(match).length}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center justify-between gap-3 mb-4 text-xs text-txt-muted">
-            <span>{filteredBookings.length} of {tripBookings.length} booking{tripBookings.length === 1 ? '' : 's'}</span>
-            {filtersActive && (
-              <button type="button" className="text-accent hover:underline" onClick={() => { setBookingView('all'); setRegistrationQuery('') }}>
-                Clear filters
-              </button>
-            )}
-          </div>
-
-          {stopSummary.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
-              {stopSummary.map((group) => (
-                <div key={group.label} className="rounded-xl border border-subtle p-4">
-                  <p className="text-[10px] font-semibold text-txt-muted uppercase tracking-widest mb-2">{group.label}</p>
-                  <ul className="space-y-1.5">
-                    {group.counts.map(([name, count]) => (
-                      <li key={name}>
-                        <button
-                          type="button"
-                          onClick={() => setRegistrationQuery(name)}
-                          className="w-full flex items-center justify-between text-sm text-txt-secondary hover:text-txt-primary"
-                          title={`Show passengers for ${name}`}
-                        >
-                          <span>{name}</span>
-                          <span className="font-semibold text-txt-primary">{count}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {filteredBookings.length === 0 ? (
-            <p className="text-txt-muted text-sm py-6 text-center">No registrations found</p>
-          ) : (
-            <>
-            {/* Phones: one card per booking */}
-            <div className="md:hidden space-y-3">
-              {filteredBookings.map((booking) => (
-                <div key={booking.id} className="rounded-xl border border-subtle p-4 space-y-3">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-txt-primary">{booking.full_name || 'Unknown'}</p>
-                      {booking.phone ? (
-                        <a href={`tel:${booking.phone}`} className="text-sm text-accent font-mono">{booking.phone}</a>
-                      ) : (
-                        <p className="text-sm text-txt-muted">No phone</p>
-                      )}
-                    </div>
-                    {renderBookingStatus(booking)}
-                  </div>
-                  {booking.trip && (
-                    <p className="text-xs text-txt-muted">
-                      {booking.trip.origin} &rarr; {booking.trip.destination} · {formatDeparture(booking.trip)}
-                    </p>
-                  )}
-                  {(booking.pickup_location || booking.dropoff_location) && (
-                    <p className="text-xs text-txt-secondary">
-                      {booking.pickup_location || '—'} <span className="text-accent">&rarr;</span> {booking.dropoff_location || '—'}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">{renderBookingActions(booking)}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="hidden md:block overflow-x-auto -mx-6">
-              <table className="w-full min-w-[700px]">
-                <thead>
-                  <tr className="border-b border-subtle">
-                    {sortHeader('trip', 'Trip', 'px-6')}
-                    {sortHeader('name', 'Passenger')}
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Phone</th>
-                    {sortHeader('pickup', 'Pickup')}
-                    {sortHeader('dropoff', 'Drop-off')}
-                    {sortHeader('booked', 'Booked')}
-                    {sortHeader('status', 'Status')}
-                    <th className="px-6 py-3 text-right text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-subtle">
-                  {filteredBookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-[rgba(var(--overlay),0.02)] transition-colors">
-                      <td className="px-6 py-3.5">
-                        {booking.trip ? (
-                          <div>
-                            <p className="text-sm font-medium text-txt-primary">
-                              {booking.trip.origin} <span className="text-accent">&rarr;</span> {booking.trip.destination}
-                            </p>
-                            <p className="text-xs text-txt-muted">{formatDeparture(booking.trip)}</p>
-                          </div>
-                        ) : (
-                          <span className="text-txt-muted text-sm">Unavailable</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-txt-primary">{booking.full_name || 'Unknown'}</td>
-                      <td className="px-4 py-3.5 text-sm text-txt-secondary font-mono">{booking.phone || '-'}</td>
-                      <td className="px-4 py-3.5 text-sm text-txt-secondary">
-                        {booking.pickup_location || <span className="text-txt-muted">—</span>}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-txt-secondary">
-                        {booking.dropoff_location || <span className="text-txt-muted">—</span>}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-txt-muted">
-                        {new Date(booking.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3.5">{renderBookingStatus(booking)}</td>
-                      <td className="px-6 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">{renderBookingActions(booking)}</div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            </>
-          )}
-        </div>
+          <BookingsTab
+            key={bookingsTripId}
+            tripId={bookingsTripId}
+            bookings={allBookings}
+            trips={allTrips}
+            renderBookingStatus={renderBookingStatus}
+            renderBookingActions={renderBookingActions}
+            syncMessage={syncMessage}
+            setSyncMessage={setSyncMessage}
+            onChanged={fetchDashboardData}
+          />
         )}
 
         {tab === 'revenue' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { label: 'Paid revenue', value: formatCfa(stats?.totalRevenue || 0) },
-                { label: 'Paid bookings', value: paymentCounts.paid || 0 },
-                { label: 'Pending payment', value: paymentCounts.pending || 0 },
-                { label: 'Refunded', value: paymentCounts.refunded || 0 },
-              ].map((item) => (
-                <div key={item.label} className="glass rounded-2xl p-4">
-                  <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">{item.label}</p>
-                  <p className="font-display text-xl font-bold text-txt-primary">{item.value}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="glass rounded-2xl p-4 sm:p-6">
-                <h2 className="font-display font-bold text-txt-primary mb-4">By month</h2>
-                {revenueByMonth.length === 0 ? (
-                  <p className="text-txt-muted text-sm">No paid bookings yet</p>
-                ) : (
-                  <ul className="divide-y divide-subtle">
-                    {revenueByMonth.map(([month, { seats, amount }]) => (
-                      <li key={month} className="flex justify-between items-center py-2.5 text-sm">
-                        <span className="text-txt-secondary">{monthLabel(month)}</span>
-                        <span className="text-right">
-                          <span className="font-semibold text-txt-primary">{formatCfa(amount)}</span>
-                          <span className="block text-xs text-txt-muted">{seats} seat{seats === 1 ? '' : 's'}</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="glass rounded-2xl p-4 sm:p-6">
-                <h2 className="font-display font-bold text-txt-primary mb-4">By trip</h2>
-                {revenueTrips.length === 0 ? (
-                  <p className="text-txt-muted text-sm">No paid bookings yet</p>
-                ) : (
-                  <ul className="divide-y divide-subtle">
-                    {revenueTrips.map((trip) => (
-                      <li key={trip.id} className="flex justify-between items-center gap-3 py-2.5 text-sm">
-                        <span className="min-w-0">
-                          <span className="block text-txt-primary truncate">{trip.origin} &rarr; {trip.destination}</span>
-                          <span className="block text-xs text-txt-muted">{formatDeparture(trip)}</span>
-                        </span>
-                        <span className="text-right whitespace-nowrap">
-                          <span className="font-semibold text-txt-primary">{formatCfa(revenueByTrip[trip.id] || 0)}</span>
-                          <span className="block text-xs text-txt-muted">{paidSeatsByTrip[trip.id]} paid</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-            <p className="text-xs text-txt-muted">
-              Revenue is each trip&apos;s current price × its paid bookings, grouped by departure month.
-            </p>
-          </div>
+          <RevenueTab
+            bookings={allBookings}
+            trips={allTrips}
+            totalRevenue={stats?.totalRevenue || 0}
+            revenueByTrip={revenueByTrip}
+            paidSeatsByTrip={paidSeatsByTrip}
+          />
         )}
 
         {tab === 'updates' && (
-          <div className="space-y-4">
-            <form onSubmit={handlePostUpdate} className="glass rounded-2xl p-4 sm:p-6 space-y-4">
-              <div>
-                <h2 className="font-display font-bold text-txt-primary">Post an update</h2>
-                <p className="text-xs text-txt-muted mt-1">
-                  Shown on the trip page and on passengers&apos; tickets. Updates &quot;for everyone&quot; also show on the home page.
-                </p>
-              </div>
-              <select
-                className="input-dark"
-                value={updateForm.trip_id}
-                onChange={(e) => setUpdateForm({ ...updateForm, trip_id: e.target.value })}
-              >
-                <option value="">For everyone</option>
-                {[...upcomingTrips, ...tripsNewestFirst.filter((t) => !upcomingTrips.includes(t))].map((trip) => (
-                  <option key={trip.id} value={trip.id}>
-                    {trip.origin} → {trip.destination} · {formatDeparture(trip)}
-                  </option>
-                ))}
-              </select>
-              <textarea
-                className="input-dark min-h-[100px]"
-                maxLength={1000}
-                placeholder="e.g. The bus is 20 minutes late. Pickup at the main gate instead of the library."
-                value={updateForm.message}
-                onChange={(e) => setUpdateForm({ ...updateForm, message: e.target.value })}
-              />
-              <div className="flex justify-end">
-                <Button type="submit" size="sm" loading={postingUpdate} disabled={!updateForm.message.trim()}>
-                  Post update
-                </Button>
-              </div>
-            </form>
-
-            <div className="glass rounded-2xl p-4 sm:p-6">
-              <h2 className="font-display font-bold text-txt-primary mb-4">Posted updates</h2>
-              {updates.length === 0 ? (
-                <p className="text-sm text-txt-muted">No updates yet.</p>
-              ) : (
-                <ul className="divide-y divide-subtle">
-                  {updates.map((u) => (
-                    <li key={u.id} className="py-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-semibold text-accent uppercase tracking-widest">{u.trip_label || 'For everyone'}</p>
-                        <p className="text-sm text-txt-primary whitespace-pre-line break-words mt-1">{u.message}</p>
-                        <p className="text-xs text-txt-muted mt-1">
-                          {formatTripDate(new Date(u.created_at).toISOString().slice(0, 10), { day: 'numeric', month: 'short' })} at {formatDakarTime(new Date(u.created_at).toISOString())} · {u.posted_by}
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteUpdate(u.id)}>Delete</Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
+          <UpdatesTab
+            key={updatesTripId}
+            tripId={updatesTripId}
+            trips={[...upcomingTrips, ...tripsNewestFirst.filter((t) => !upcomingTrips.includes(t))]}
+          />
         )}
 
-        {tab === 'settings' && (
-          <div className="space-y-4">
-          <form onSubmit={handleSaveRules} className="glass rounded-2xl p-4 sm:p-6 space-y-4">
-            <div>
-              <h2 className="font-display font-bold text-txt-primary">Booking rules</h2>
-              <p className="text-sm text-txt-muted">
-                Limits stop people or scripts from holding seats with unpaid bookings. Paid bookings are never limited, and admins are not limited.
-              </p>
-            </div>
-            {!bookingRules ? (
-              <p className="text-sm text-txt-muted">{rulesMessage || 'Loading...'}</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {([
-                    ['max_unpaid_per_phone', 'Unpaid bookings allowed at once, per phone number', '1'],
-                    ['max_bookings_per_window', 'Bookings allowed per phone or device in the time window', '1'],
-                    ['booking_window_minutes', 'Time window (minutes)', '1'],
-                    ['refund_cutoff_hours', 'Students can cancel and get refunded until (hours before departure)', '0.5'],
-                    ['default_booking_close_minutes', 'Bookings close (minutes before departure), for trips without their own setting', '5'],
-                    ['auto_complete_hours', 'Mark trips completed automatically (hours after departure), if nobody does', '1'],
-                    ['personal_data_months', 'Erase passengers\' name, phone and email (months after the trip). Amounts and trips are kept.', '1'],
-                    ['payment_fee_percent', 'Naboopay fee paid by the passenger (%), shown with every price. Must match Naboopay\'s actual rate.', '0.1'],
-                  ] as const).map(([key, label, step]) => (
-                    <label key={key} className="block">
-                      <span className="block text-xs font-medium text-txt-secondary mb-1.5">{label}</span>
-                      <input
-                        type="number"
-                        required
-                        min={key === 'refund_cutoff_hours' || key === 'default_booking_close_minutes' ? 0 : 1}
-                        step={step}
-                        className="input-dark"
-                        value={bookingRules[key]}
-                        onChange={(e) => setBookingRules({ ...bookingRules, [key]: Number(e.target.value) })}
-                      />
-                    </label>
-                  ))}
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button type="submit" size="sm" loading={savingRules}>Save rules</Button>
-                  {rulesMessage && <span className="text-sm text-txt-muted">{rulesMessage}</span>}
-                </div>
-              </>
-            )}
-          </form>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              { title: 'Checkpoints', text: 'Pickup and drop-off stops students choose from.', action: openCheckpoints },
-              { title: 'Add admin', text: 'Give someone access to this dashboard.', action: () => { setShowAddAdmin(true); setAddAdminError(null); setAddAdminSuccess(false) } },
-              { title: 'Password', text: 'Change your own password.', action: () => { setShowChangePassword(true); setChangePasswordError(null); setChangePasswordSuccess(false) } },
-            ].map((item) => (
-              <button
-                key={item.title}
-                type="button"
-                onClick={item.action}
-                className="glass rounded-2xl p-5 text-left hover:border-[rgba(var(--accent),0.4)] transition-colors"
-              >
-                <p className="font-display font-bold text-txt-primary mb-1">{item.title}</p>
-                <p className="text-sm text-txt-muted">{item.text}</p>
-              </button>
-            ))}
-          </div>
-          </div>
-        )}
-
-        {/* Export Bookings Modal */}
-        {showExport && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExport(false)} />
-            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
-              <h2 className="font-display text-xl font-bold text-txt-primary mb-1">Export Bookings</h2>
-              <p className="text-sm text-txt-muted mb-5">Only paid, non-cancelled bookings will be included.</p>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Filter by Shuttle</label>
-                  <select
-                    className="input-dark"
-                    value={exportTripId}
-                    onChange={(e) => setExportTripId(e.target.value)}
-                  >
-                    <option value="all">All shuttles</option>
-                    {allTrips.filter((t) => t.status !== 'archived').map((trip) => (
-                      <option key={trip.id} value={trip.id}>
-                        {trip.origin} → {trip.destination} &mdash; {new Date(trip.departure_date).toLocaleDateString()} {trip.departure_time}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="rounded-xl border border-[rgba(var(--success),0.25)] bg-[rgba(var(--success),0.06)] px-4 py-3 text-sm text-[rgb(var(--success))] flex items-start gap-2">
-                  <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>Includes only <strong>paid</strong> bookings. Cancelled and pending/unpaid bookings are excluded.</span>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowExport(false)}>
-                  Cancel
-                </Button>
-                <Button loading={exportingBookings} className="flex-1" onClick={handleExportBookings}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Download CSV
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {tab === 'settings' && <SettingsTab />}
 
         {/* Create Trip Modal */}
         {showCreateTrip && (
@@ -1662,257 +908,6 @@ export default function AdminDashboard() {
                   </Button>
                   <Button type="submit" loading={creatingTrip} className="flex-1">
                     {editingTripId ? 'Save Changes' : 'Create Trip'}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Add Admin Modal */}
-        {showAddAdmin && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddAdmin(false)} />
-            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
-              <h2 className="font-display text-xl font-bold text-txt-primary mb-5">Add Admin Member</h2>
-
-              {addAdminSuccess && (
-                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--success),0.1)] border border-[rgba(var(--success),0.2)] text-[rgb(var(--success))] text-sm">
-                  Admin added successfully!
-                </div>
-              )}
-              {addAdminError && (
-                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
-                  {addAdminError}
-                </div>
-              )}
-
-              <form onSubmit={handleAddAdmin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Email</label>
-                  <input
-                    type="email"
-                    required
-                    className="input-dark"
-                    placeholder="admin@example.com"
-                    value={newAdmin.email}
-                    onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    className="input-dark"
-                    placeholder="John Doe"
-                    value={newAdmin.full_name}
-                    onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Phone</label>
-                  <input
-                    type="tel"
-                    required
-                    className="input-dark"
-                    placeholder="+221 77 000 0000"
-                    value={newAdmin.phone}
-                    onChange={(e) => setNewAdmin({ ...newAdmin, phone: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Password</label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    className="input-dark"
-                    placeholder="Min 6 characters"
-                    value={newAdmin.password}
-                    onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
-                  />
-                </div>
-                <div className="flex gap-3 pt-3">
-                  <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowAddAdmin(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" loading={addingAdmin} className="flex-1">
-                    Add Admin
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Checkpoints Modal */}
-        {showCheckpoints && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCheckpoints(false)} />
-            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in max-h-[90vh] overflow-y-auto">
-              <h2 className="font-display text-xl font-bold text-txt-primary mb-1">Checkpoints</h2>
-              <p className="text-xs text-txt-muted mb-5">
-                Students pick from the active stops in the trip&apos;s origin city (pickup) and destination city (drop-off).
-                Put each city&apos;s stops in route order with the arrows. &quot;Min&quot; is how many minutes after departure the
-                bus reaches a pickup stop; students see the time (e.g. 07:30 + 20 min = 07:50). Leave it empty to show no time.
-              </p>
-
-              {checkpointError && (
-                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
-                  {checkpointError}
-                </div>
-              )}
-
-              {checkpoints.length === 0 ? (
-                <p className="text-txt-muted text-sm mb-5">No checkpoints yet</p>
-              ) : (
-                <ul className="divide-y divide-subtle mb-5">
-                  {checkpoints.map((checkpoint, i) => {
-                    const sameCity = (other?: Checkpoint) => other?.city === checkpoint.city
-                    return (
-                    <li key={checkpoint.id} className="flex items-center gap-2 py-2.5">
-                      <div className="flex flex-col">
-                        <button
-                          type="button"
-                          aria-label={`Move ${checkpoint.name} earlier`}
-                          disabled={!sameCity(checkpoints[i - 1])}
-                          onClick={() => handleCheckpointChange(checkpoint, { direction: 'up' })}
-                          className="text-txt-muted hover:text-accent disabled:opacity-20 leading-none px-1"
-                        >▲</button>
-                        <button
-                          type="button"
-                          aria-label={`Move ${checkpoint.name} later`}
-                          disabled={!sameCity(checkpoints[i + 1])}
-                          onClick={() => handleCheckpointChange(checkpoint, { direction: 'down' })}
-                          className="text-txt-muted hover:text-accent disabled:opacity-20 leading-none px-1"
-                        >▼</button>
-                      </div>
-                      <div className={`flex-1 min-w-0 ${checkpoint.active ? '' : 'opacity-50'}`}>
-                        <p className="text-sm font-medium text-txt-primary truncate">{checkpoint.name}</p>
-                        <p className="text-xs text-txt-muted capitalize">{checkpoint.city}</p>
-                      </div>
-                      <label className="flex items-center gap-1 text-xs text-txt-muted">
-                        +
-                        <input
-                          type="number"
-                          min={0}
-                          max={1440}
-                          className="input-dark w-16 px-2 py-1 text-sm"
-                          defaultValue={checkpoint.minutes_after_departure ?? ''}
-                          onBlur={(e) => {
-                            if (e.target.value !== String(checkpoint.minutes_after_departure ?? '')) {
-                              handleCheckpointChange(checkpoint, { minutes_after_departure: e.target.value })
-                            }
-                          }}
-                        />
-                        min
-                      </label>
-                      <Button variant="ghost" size="sm" onClick={() => handleToggleCheckpoint(checkpoint)}>
-                        {checkpoint.active ? 'Turn off' : 'Turn on'}
-                      </Button>
-                    </li>
-                    )
-                  })}
-                </ul>
-              )}
-
-              <form onSubmit={handleAddCheckpoint} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-txt-secondary mb-1.5">Name</label>
-                    <input
-                      type="text"
-                      required
-                      className="input-dark"
-                      placeholder="Liberté 6"
-                      value={newCheckpoint.name}
-                      onChange={(e) => setNewCheckpoint({ ...newCheckpoint, name: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-txt-secondary mb-1.5">City</label>
-                    <input
-                      type="text"
-                      required
-                      className="input-dark"
-                      placeholder="Dakar"
-                      value={newCheckpoint.city}
-                      onChange={(e) => setNewCheckpoint({ ...newCheckpoint, city: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-3 pt-1">
-                  <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowCheckpoints(false)}>
-                    Close
-                  </Button>
-                  <Button type="submit" loading={savingCheckpoint} className="flex-1">
-                    Add Checkpoint
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Change Password Modal */}
-        {showChangePassword && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowChangePassword(false)} />
-            <div className="relative glass-strong rounded-3xl shadow-2xl max-w-md w-full p-7 animate-scale-in">
-              <h2 className="font-display text-xl font-bold text-txt-primary mb-5">Change Password</h2>
-
-              {changePasswordSuccess && (
-                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--success),0.1)] border border-[rgba(var(--success),0.2)] text-[rgb(var(--success))] text-sm">
-                  Password changed successfully!
-                </div>
-              )}
-              {changePasswordError && (
-                <div className="mb-4 px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.1)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
-                  {changePasswordError}
-                </div>
-              )}
-
-              <form onSubmit={handleChangePassword} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Current Password</label>
-                  <input
-                    type="password"
-                    required
-                    className="input-dark"
-                    value={passwordForm.current_password}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">New Password</label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    className="input-dark"
-                    placeholder="Min 6 characters"
-                    value={passwordForm.new_password}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-txt-secondary mb-1.5">Confirm New Password</label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    className="input-dark"
-                    value={passwordForm.confirm_password}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })}
-                  />
-                </div>
-                <div className="flex gap-3 pt-3">
-                  <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowChangePassword(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" loading={changingPassword} className="flex-1">
-                    Update Password
                   </Button>
                 </div>
               </form>
