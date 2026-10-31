@@ -110,6 +110,8 @@ export default defineSchema({
     // Private, unguessable id for the ticket page (/ticket/<token>); emailed once when paid
     ticket_token: v.optional(v.string()),
     ticket_emailed_at: v.optional(v.number()),
+    // Set when name/phone/email were erased under the retention rule (convex/privacy.ts)
+    personal_data_erased_at: v.optional(v.number()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
@@ -140,6 +142,7 @@ export default defineSchema({
     refund_cutoff_hours: v.number(),
     default_booking_close_minutes: v.optional(v.number()),
     auto_complete_hours: v.optional(v.number()),
+    personal_data_months: v.optional(v.number()),
     updated_at: v.number(),
   }),
 

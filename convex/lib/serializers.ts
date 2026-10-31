@@ -33,7 +33,7 @@ export const toPublicBooking = (booking: any, trip?: any) => ({
   payment_status: booking.payment_status,
   payment_id: booking.payment_id,
   payment_link: booking.payment_link,
-  full_name: booking.full_name,
+  full_name: booking.personal_data_erased_at ? "(personal data erased)" : booking.full_name,
   phone: booking.phone,
   email: booking.email,
   pickup_location: booking.pickup_location,

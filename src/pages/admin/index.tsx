@@ -25,6 +25,7 @@ type BookingRules = {
   refund_cutoff_hours: number
   default_booking_close_minutes: number
   auto_complete_hours: number
+  personal_data_months: number
 }
 
 const EMPTY_TRIP = {
@@ -1222,6 +1223,7 @@ export default function AdminDashboard() {
                     ['refund_cutoff_hours', 'Students can cancel and get refunded until (hours before departure)', '0.5'],
                     ['default_booking_close_minutes', 'Bookings close (minutes before departure), for trips without their own setting', '5'],
                     ['auto_complete_hours', 'Mark trips completed automatically (hours after departure), if nobody does', '1'],
+                    ['personal_data_months', 'Erase passengers\' name, phone and email (months after the trip). Amounts and trips are kept.', '1'],
                   ] as const).map(([key, label, step]) => (
                     <label key={key} className="block">
                       <span className="block text-xs font-medium text-txt-secondary mb-1.5">{label}</span>
