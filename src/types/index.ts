@@ -69,6 +69,8 @@ export interface Booking {
   dropoff_location?: string
   // Private link to the ticket page: /ticket/<ticket_token>
   ticket_token?: string
+  // Naboopay's fee paid on top of the ticket price; not refunded on cancellation
+  payment_fee?: number
   // When the ticket was scanned at the bus door (ISO)
   boarded_at?: string
   created_at: string

@@ -210,7 +210,8 @@ export default function TripDetailsPage() {
                 </p>
                 {!!trip.payment_fee && (
                   <p className="text-xs text-txt-muted mt-1">
-                    {trip.price.toLocaleString()} ticket + {trip.payment_fee.toLocaleString()} payment fee ({trip.payment_fee_percent}%)
+                    {trip.price.toLocaleString()} ticket + {trip.payment_fee.toLocaleString()} payment fee ({trip.payment_fee_percent}%).
+                    The fee is not refundable.
                   </p>
                 )}
               </div>
@@ -278,6 +279,11 @@ export default function TripDetailsPage() {
                           You&apos;ll be redirected to pay {totalPrice(trip).toLocaleString()} CFA
                           {!!trip.payment_fee && <> ({trip.price.toLocaleString()} ticket + {trip.payment_fee.toLocaleString()} Naboopay fee)</>}
                         </p>
+                        {!!trip.payment_fee && (
+                          <p className="text-xs text-txt-muted mt-0.5">
+                            If you cancel, the ticket price is refunded; Naboopay&apos;s {trip.payment_fee.toLocaleString()} CFA fee is not.
+                          </p>
+                        )}
                         {trip.bookings_close_at && (
                           <p className="text-xs text-txt-muted mt-0.5">
                             Bookings close at {formatDakarTime(trip.bookings_close_at)} (Dakar time)

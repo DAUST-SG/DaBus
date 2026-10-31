@@ -148,7 +148,7 @@ export default function TicketPage() {
                   paid ? 'Paid' : 'Price',
                   ticket.amount
                     ? ticket.payment_fee
-                      ? `${(ticket.amount + ticket.payment_fee).toLocaleString()} CFA (${ticket.amount.toLocaleString()} + ${ticket.payment_fee.toLocaleString()} payment fee)`
+                      ? `${(ticket.amount + ticket.payment_fee).toLocaleString()} CFA (${ticket.amount.toLocaleString()} + ${ticket.payment_fee.toLocaleString()} payment fee, not refundable)`
                       : `${ticket.amount.toLocaleString()} CFA`
                     : undefined,
                 ],
