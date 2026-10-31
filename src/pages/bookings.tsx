@@ -42,8 +42,9 @@ export default function BookingsPage() {
 
   const handleCancel = async (booking: Booking) => {
     const paid = booking.payment_status === 'paid'
+    const fee = booking.payment_fee ? ` Naboopay's ${booking.payment_fee.toLocaleString()} CFA payment fee is not refundable.` : ''
     const question = paid
-      ? 'Cancel this booking? Your payment will be refunded through Naboopay (Wave / Orange Money).'
+      ? `Cancel this booking? The ticket price will be refunded through Naboopay (Wave / Orange Money).${fee}`
       : 'Cancel this booking?'
     if (!confirm(question)) return
 

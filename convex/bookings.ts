@@ -7,7 +7,7 @@ import { bookingsCloseAt, departureMs, now } from "./lib/time";
 import { activeCheckpointNames } from "./checkpoints";
 import { flagRefund } from "./ledger";
 import { generateSessionToken } from "./lib/validation";
-import { getSettings } from "./settings";
+import { getSettings, paymentFee } from "./settings";
 import { seatsTaken, syncSeats } from "./lib/seats";
 
 // A stop is required only when the city has some; it must be one of them
@@ -119,6 +119,7 @@ export const create = mutation({
       pickup_location,
       dropoff_location,
       amount: trip.price,
+      payment_fee: paymentFee(trip.price, settings.payment_fee_percent),
       phone_key,
       client_key: args.clientKey,
       ticket_token: generateSessionToken(),

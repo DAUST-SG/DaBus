@@ -25,6 +25,9 @@ export interface Trip {
   bookings_closed?: boolean
   // When bookings close (ISO); compare with the clock, the server rechecks on booking
   bookings_close_at?: string
+  // Naboopay's fee the passenger pays on top of price, and its rate (Settings)
+  payment_fee?: number
+  payment_fee_percent?: number
   created_at: string
   // Only returned by GET /trips/:id
   pickup_checkpoints?: string[]
@@ -66,6 +69,8 @@ export interface Booking {
   dropoff_location?: string
   // Private link to the ticket page: /ticket/<ticket_token>
   ticket_token?: string
+  // Naboopay's fee paid on top of the ticket price; not refunded on cancellation
+  payment_fee?: number
   // When the ticket was scanned at the bus door (ISO)
   boarded_at?: string
   created_at: string

@@ -67,8 +67,8 @@ export const listTrips = query({
 
     const trips = await ctx.db.query("trips").collect();
     trips.sort((a: any, b: any) => b.created_at - a.created_at);
-    const { default_booking_close_minutes } = await getSettings(ctx);
-    return trips.map((trip) => withBookingWindow(trip, default_booking_close_minutes));
+    const settings = await getSettings(ctx);
+    return trips.map((trip) => withBookingWindow(trip, settings));
   },
 });
 

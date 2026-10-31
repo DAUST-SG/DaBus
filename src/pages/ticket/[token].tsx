@@ -15,6 +15,7 @@ type Ticket = {
   payment_status: 'pending' | 'paid' | 'refunded'
   has_payment: boolean
   amount?: number
+  payment_fee?: number
   pickup_location?: string
   pickup_time?: string
   dropoff_location?: string
@@ -143,7 +144,14 @@ export default function TicketPage() {
                 ['Passenger', ticket.full_name || '-'],
                 ['Pickup', ticket.pickup_time ? `${ticket.pickup_location} at ${ticket.pickup_time}` : ticket.pickup_location],
                 ['Drop-off', ticket.dropoff_location],
-                [paid ? 'Paid' : 'Price', ticket.amount ? `${ticket.amount.toLocaleString()} CFA` : undefined],
+                [
+                  paid ? 'Paid' : 'Price',
+                  ticket.amount
+                    ? ticket.payment_fee
+                      ? `${(ticket.amount + ticket.payment_fee).toLocaleString()} CFA (${ticket.amount.toLocaleString()} + ${ticket.payment_fee.toLocaleString()} payment fee, not refundable)`
+                      : `${ticket.amount.toLocaleString()} CFA`
+                    : undefined,
+                ],
                 ['Ticket', ticket.ref],
               ]
                 .filter(([, value]) => value)

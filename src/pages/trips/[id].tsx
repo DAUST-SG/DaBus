@@ -7,7 +7,7 @@ import Button from '@/components/Button'
 import TripUpdates from '@/components/TripUpdates'
 import { useAuth } from '@/context/AuthContext'
 import { Trip } from '@/types'
-import { bookingsOpen, formatDakarTime, formatTripDate } from '@/lib/time'
+import { bookingsOpen, formatDakarTime, formatTripDate, totalPrice } from '@/lib/time'
 
 export default function TripDetailsPage() {
   const router = useRouter()
@@ -206,8 +206,14 @@ export default function TripDetailsPage() {
               <div className="rounded-2xl bg-[rgba(var(--overlay),0.03)] border border-subtle p-5">
                 <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">Price</p>
                 <p className="font-display text-2xl font-bold text-gradient">
-                  {trip.price.toLocaleString()} <span className="text-sm font-body font-normal text-txt-muted">CFA</span>
+                  {totalPrice(trip).toLocaleString()} <span className="text-sm font-body font-normal text-txt-muted">CFA</span>
                 </p>
+                {!!trip.payment_fee && (
+                  <p className="text-xs text-txt-muted mt-1">
+                    {trip.price.toLocaleString()} ticket + {trip.payment_fee.toLocaleString()} payment fee ({trip.payment_fee_percent}%).
+                    The fee is not refundable.
+                  </p>
+                )}
               </div>
               <div className="rounded-2xl bg-[rgba(var(--overlay),0.03)] border border-subtle p-5">
                 <p className="text-xs text-txt-muted uppercase tracking-wider mb-1">Available</p>
@@ -270,8 +276,14 @@ export default function TripDetailsPage() {
                       <div>
                         <p className="text-sm font-medium text-txt-primary">Pay with Wave or Orange Money</p>
                         <p className="text-xs text-txt-muted mt-0.5">
-                          You&apos;ll be redirected to complete payment of {trip.price.toLocaleString()} CFA
+                          You&apos;ll be redirected to pay {totalPrice(trip).toLocaleString()} CFA
+                          {!!trip.payment_fee && <> ({trip.price.toLocaleString()} ticket + {trip.payment_fee.toLocaleString()} Naboopay fee)</>}
                         </p>
+                        {!!trip.payment_fee && (
+                          <p className="text-xs text-txt-muted mt-0.5">
+                            If you cancel, the ticket price is refunded; Naboopay&apos;s {trip.payment_fee.toLocaleString()} CFA fee is not.
+                          </p>
+                        )}
                         {trip.bookings_close_at && (
                           <p className="text-xs text-txt-muted mt-0.5">
                             Bookings close at {formatDakarTime(trip.bookings_close_at)} (Dakar time)
@@ -285,7 +297,7 @@ export default function TripDetailsPage() {
                       className="w-full"
                       size="lg"
                     >
-                      Book Now &mdash; {trip.price.toLocaleString()} CFA
+                      Book Now &mdash; {totalPrice(trip).toLocaleString()} CFA
                     </Button>
                   </div>
                 ) : (

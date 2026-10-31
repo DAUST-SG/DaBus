@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Trip } from '@/types'
-import { bookingsOpen, formatTripDate } from '@/lib/time'
+import { bookingsOpen, formatTripDate, totalPrice } from '@/lib/time'
 
 interface TripCardProps {
   trip: Trip
@@ -75,7 +75,8 @@ export default function TripCard({ trip }: TripCardProps) {
         {/* Footer */}
         <div className="flex justify-between items-center pt-3 border-t border-subtle">
           <span className="font-display text-xl font-bold text-gradient">
-            {trip.price.toLocaleString()} <span className="text-sm font-body font-normal text-txt-muted">CFA</span>
+            {totalPrice(trip).toLocaleString()} <span className="text-sm font-body font-normal text-txt-muted">CFA</span>
+            {!!trip.payment_fee && <span className="block text-[11px] font-body font-normal text-txt-muted">incl. {trip.payment_fee_percent}% payment fee</span>}
           </span>
           <span
             className={`text-sm font-medium transition-all duration-200 ${

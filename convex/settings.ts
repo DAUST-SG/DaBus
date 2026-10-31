@@ -12,9 +12,13 @@ const DEFAULTS = {
   default_booking_close_minutes: 30,
   auto_complete_hours: 12,
   personal_data_months: 6,
+  payment_fee_percent: 3,
 };
 
 export type Settings = typeof DEFAULTS;
+
+// What the passenger pays Naboopay on top of a price, in whole CFA
+export const paymentFee = (price: number, percent: number) => Math.round((price * percent) / 100);
 
 export const getSettings = async (ctx: any): Promise<Settings> => {
   const row = await ctx.db.query("settings").first();
@@ -29,6 +33,7 @@ const pick = (s: any): Settings => ({
   default_booking_close_minutes: s.default_booking_close_minutes,
   auto_complete_hours: s.auto_complete_hours,
   personal_data_months: s.personal_data_months,
+  payment_fee_percent: s.payment_fee_percent,
 });
 
 export const get = query({
@@ -55,6 +60,7 @@ export const update = mutation({
     default_booking_close_minutes: v.number(),
     auto_complete_hours: v.number(),
     personal_data_months: v.number(),
+    payment_fee_percent: v.number(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.sessionToken);
@@ -62,7 +68,8 @@ export const update = mutation({
     for (const [key, value] of Object.entries(values)) {
       // Hours and minutes may be 0 ("at departure"); counts must be at least 1
       const zeroOk = key === "refund_cutoff_hours" || key === "default_booking_close_minutes";
-      const ok = zeroOk ? value >= 0 : Number.isInteger(value) && value >= 1;
+      const ok = key === "payment_fee_percent" ? value >= 0 && value <= 20
+        : zeroOk ? value >= 0 : Number.isInteger(value) && value >= 1;
       if (!ok) {
         throw new ConvexError({ status: 400, message: `Invalid value for ${key.replace(/_/g, " ")}` });
       }
