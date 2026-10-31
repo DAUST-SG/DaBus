@@ -31,22 +31,34 @@ type BookingRules = {
   personal_data_months: number
 }
 
-const NO_BOOKING_FILTERS = { payment: 'all', status: 'all', pickup: 'all', dropoff: 'all' }
-
-const byText = (pick: (b: Booking) => string | undefined) => (a: Booking, b: Booking) =>
-  (pick(a) || '￿').localeCompare(pick(b) || '￿')
-const tripKey = (b: Booking) => b.trip ? `${b.trip.departure_date}T${b.trip.departure_time}` : ''
-const BOOKING_SORTS = {
-  newest: { label: 'Newest booking first', compare: (a: Booking, b: Booking) => String(b.created_at).localeCompare(String(a.created_at)) },
-  oldest: { label: 'Oldest booking first', compare: (a: Booking, b: Booking) => String(a.created_at).localeCompare(String(b.created_at)) },
-  // Erased names ("(personal data erased)") go last, with the missing ones
-  name: { label: 'Name (A–Z)', compare: byText((b) => b.full_name?.startsWith('(') ? undefined : b.full_name) },
-  pickup: { label: 'Pickup stop', compare: byText((b) => b.pickup_location) },
-  dropoff: { label: 'Drop-off stop', compare: byText((b) => b.dropoff_location) },
-  departure: { label: 'Trip departure', compare: (a: Booking, b: Booking) => tripKey(a).localeCompare(tripKey(b)) },
-  payment: { label: 'Payment status', compare: byText((b) => b.payment_status) },
+// One choice of which bookings to show (stops are filtered by clicking them in the stop summary)
+const BOOKING_VIEWS = {
+  all: { label: 'All', match: (_: Booking) => true },
+  paid: { label: 'Paid', match: (b: Booking) => b.payment_status === 'paid' && b.status !== 'cancelled' },
+  unpaid: { label: 'Not paid', match: (b: Booking) => b.payment_status === 'pending' && b.status !== 'cancelled' },
+  cancelled: { label: 'Cancelled', match: (b: Booking) => b.status === 'cancelled' },
+  refunded: { label: 'Refunded', match: (b: Booking) => b.payment_status === 'refunded' },
+  boarded: { label: 'Boarded', match: (b: Booking) => !!b.boarded_at },
+  no_show: { label: 'Not boarded', match: (b: Booking) => b.payment_status === 'paid' && b.status !== 'cancelled' && !b.boarded_at },
 }
-type BookingSort = keyof typeof BOOKING_SORTS
+type BookingView = keyof typeof BOOKING_VIEWS
+
+// Sorting by clicking a column header; empty values (and erased names) always go last
+const SORT_VALUES = {
+  trip: (b: Booking) => b.trip ? `${b.trip.departure_date}T${b.trip.departure_time}` : '',
+  name: (b: Booking) => b.full_name?.startsWith('(') ? '' : b.full_name || '',
+  pickup: (b: Booking) => b.pickup_location || '',
+  dropoff: (b: Booking) => b.dropoff_location || '',
+  booked: (b: Booking) => String(b.created_at),
+  status: (b: Booking) => b.payment_status,
+}
+type SortKey = keyof typeof SORT_VALUES
+const compareBy = ({ key, desc }: { key: SortKey; desc: boolean }) => (a: Booking, b: Booking) => {
+  const x = SORT_VALUES[key](a)
+  const y = SORT_VALUES[key](b)
+  if (!x || !y) return x ? -1 : y ? 1 : 0
+  return (desc ? -1 : 1) * x.localeCompare(y)
+}
 
 const EMPTY_TRIP = {
   origin: '',
@@ -73,8 +85,8 @@ export default function AdminDashboard() {
   const [allBookings, setAllBookings] = useState<Booking[]>([])
   const [selectedTripId, setSelectedTripId] = useState('all')
   const [registrationQuery, setRegistrationQuery] = useState('')
-  const [bookingFilters, setBookingFilters] = useState(NO_BOOKING_FILTERS)
-  const [bookingSort, setBookingSort] = useState<BookingSort>('newest')
+  const [bookingView, setBookingView] = useState<BookingView>('all')
+  const [bookingSort, setBookingSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'booked', desc: true })
   const [updates, setUpdates] = useState<AdminUpdate[]>([])
   const [updateForm, setUpdateForm] = useState({ trip_id: '', message: '' })
   const [postingUpdate, setPostingUpdate] = useState(false)
@@ -306,7 +318,7 @@ export default function AdminDashboard() {
   const viewTripBookings = (tripId: string) => {
     setSelectedTripId(tripId)
     setRegistrationQuery('')
-    setBookingFilters(NO_BOOKING_FILTERS)
+    setBookingView('all')
     setTab('bookings')
   }
 
@@ -562,14 +574,8 @@ export default function AdminDashboard() {
 
   const normalizedQuery = registrationQuery.trim().toLowerCase()
   const tripBookings = allBookings.filter((b) => selectedTripId === 'all' || b.trip_id === selectedTripId)
-  const stopsOf = (key: 'pickup_location' | 'dropoff_location') =>
-    Array.from(new Set(tripBookings.map((b) => b[key]).filter(Boolean) as string[])).sort()
   const filteredBookings = tripBookings.filter((booking) => {
-    if (bookingFilters.payment !== 'all' && booking.payment_status !== bookingFilters.payment) return false
-    if (bookingFilters.status === 'active' && booking.status === 'cancelled') return false
-    if (bookingFilters.status === 'cancelled' && booking.status !== 'cancelled') return false
-    if (bookingFilters.pickup !== 'all' && booking.pickup_location !== bookingFilters.pickup) return false
-    if (bookingFilters.dropoff !== 'all' && booking.dropoff_location !== bookingFilters.dropoff) return false
+    if (!BOOKING_VIEWS[bookingView].match(booking)) return false
 
     if (!normalizedQuery) {
       return true
@@ -587,8 +593,20 @@ export default function AdminDashboard() {
       .toLowerCase()
 
     return searchable.includes(normalizedQuery)
-  }).sort(BOOKING_SORTS[bookingSort].compare)
-  const filtersActive = Object.values(bookingFilters).some((value) => value !== 'all') || !!normalizedQuery
+  }).sort(compareBy(bookingSort))
+  const filtersActive = bookingView !== 'all' || !!normalizedQuery
+  // Clicking the sorted column again flips the direction
+  const sortHeader = (key: SortKey, label: string, className = 'px-4') => (
+    <th className={`${className} py-3 text-left`}>
+      <button
+        type="button"
+        onClick={() => setBookingSort({ key, desc: bookingSort.key === key ? !bookingSort.desc : key === 'booked' })}
+        className={`text-[10px] font-semibold uppercase tracking-widest hover:text-txt-primary ${bookingSort.key === key ? 'text-accent' : 'text-txt-muted'}`}
+      >
+        {label}{bookingSort.key === key ? (bookingSort.desc ? ' ↓' : ' ↑') : ''}
+      </button>
+    </th>
+  )
 
   // Head count per stop for the selected trip, so the driver knows who to expect where
   const countByStop = (key: 'pickup_location' | 'dropoff_location') =>
@@ -624,6 +642,10 @@ export default function AdminDashboard() {
   // Revenue = trip price × paid bookings, grouped by the trip's departure month
   const paidSeatsByTrip = allBookings.reduce<Record<string, number>>((acc, booking) => {
     if (booking.payment_status === 'paid') acc[booking.trip_id] = (acc[booking.trip_id] || 0) + 1
+    return acc
+  }, {})
+  const boardedByTrip = allBookings.reduce<Record<string, number>>((acc, booking) => {
+    if (booking.boarded_at) acc[booking.trip_id] = (acc[booking.trip_id] || 0) + 1
     return acc
   }, {})
   const paymentCounts = allBookings.reduce<Record<string, number>>((acc, booking) => {
@@ -962,12 +984,23 @@ export default function AdminDashboard() {
                           <p className="text-[10px] uppercase tracking-widest text-txt-muted">Revenue</p>
                           <p className="font-semibold text-[rgb(var(--warning))]">{formatCfa(revenueByTrip[trip.id] || 0)}</p>
                         </div>
+                        {boardedByTrip[trip.id] > 0 && (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-txt-muted">Boarded</p>
+                            <p className="font-semibold text-[rgb(var(--success))]">{boardedByTrip[trip.id]}/{paidSeatsByTrip[trip.id] || 0}</p>
+                          </div>
+                        )}
                       </div>
                       </div>
                       <div className="flex flex-wrap gap-2 pt-3 border-t border-subtle">
                         <Button variant="outline" size="sm" onClick={() => viewTripBookings(trip.id)}>
                           Bookings
                         </Button>
+                        {editable && (
+                          <Button variant="outline" size="sm" onClick={() => router.push(`/admin/scan?trip=${trip.id}`)}>
+                            Scan tickets
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => openUpdates(trip.id)}>
                           Post update
                         </Button>
@@ -1080,7 +1113,7 @@ export default function AdminDashboard() {
             <select
               className="input-dark md:w-80"
               value={selectedTripId}
-              onChange={(e) => { setSelectedTripId(e.target.value); setBookingFilters(NO_BOOKING_FILTERS) }}
+              onChange={(e) => { setSelectedTripId(e.target.value); setBookingView('all') }}
             >
               <option value="all">All trips</option>
               {allTrips.map((trip) => (
@@ -1102,36 +1135,26 @@ export default function AdminDashboard() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
-            {([
-              ['payment', 'Payment', [['paid', 'Paid'], ['pending', 'Not paid'], ['refunded', 'Refunded']]],
-              ['status', 'Booking', [['active', 'Active'], ['cancelled', 'Cancelled']]],
-              ['pickup', 'Pickup stop', stopsOf('pickup_location').map((s) => [s, s])],
-              ['dropoff', 'Drop-off stop', stopsOf('dropoff_location').map((s) => [s, s])],
-            ] as const).map(([key, label, options]) => (
-              <label key={key} className="block">
-                <span className="block text-[10px] font-semibold text-txt-muted uppercase tracking-widest mb-1">{label}</span>
-                <select
-                  className="input-dark"
-                  value={bookingFilters[key]}
-                  onChange={(e) => setBookingFilters({ ...bookingFilters, [key]: e.target.value })}
-                >
-                  <option value="all">All</option>
-                  {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-                </select>
-              </label>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {(Object.entries(BOOKING_VIEWS) as [BookingView, (typeof BOOKING_VIEWS)[BookingView]][]).map(([view, { label, match }]) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => setBookingView(view)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  bookingView === view
+                    ? 'bg-accent text-surface-primary border-accent'
+                    : 'border-subtle text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                {label} <span className="opacity-70">{tripBookings.filter(match).length}</span>
+              </button>
             ))}
-            <label className="block col-span-2 md:col-span-1">
-              <span className="block text-[10px] font-semibold text-txt-muted uppercase tracking-widest mb-1">Sort by</span>
-              <select className="input-dark" value={bookingSort} onChange={(e) => setBookingSort(e.target.value as BookingSort)}>
-                {Object.entries(BOOKING_SORTS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
           </div>
           <div className="flex items-center justify-between gap-3 mb-4 text-xs text-txt-muted">
             <span>{filteredBookings.length} of {tripBookings.length} booking{tripBookings.length === 1 ? '' : 's'}</span>
             {filtersActive && (
-              <button type="button" className="text-accent hover:underline" onClick={() => { setBookingFilters(NO_BOOKING_FILTERS); setRegistrationQuery('') }}>
+              <button type="button" className="text-accent hover:underline" onClick={() => { setBookingView('all'); setRegistrationQuery('') }}>
                 Clear filters
               </button>
             )}
@@ -1200,13 +1223,13 @@ export default function AdminDashboard() {
               <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="border-b border-subtle">
-                    <th className="px-6 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Trip</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Passenger</th>
+                    {sortHeader('trip', 'Trip', 'px-6')}
+                    {sortHeader('name', 'Passenger')}
                     <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Phone</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Pickup</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Drop-off</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Booked</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Status</th>
+                    {sortHeader('pickup', 'Pickup')}
+                    {sortHeader('dropoff', 'Drop-off')}
+                    {sortHeader('booked', 'Booked')}
+                    {sortHeader('status', 'Status')}
                     <th className="px-6 py-3 text-right text-[10px] font-semibold text-txt-muted uppercase tracking-widest">Action</th>
                   </tr>
                 </thead>

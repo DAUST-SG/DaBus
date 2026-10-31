@@ -15,3 +15,6 @@ out/
 *.pem
 npm-debug.log*
 .vercel
+
+# Database exports hold personal data: keep them out of git
+*.zip

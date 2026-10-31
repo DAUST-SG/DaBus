@@ -60,6 +60,8 @@ export interface Booking {
   dropoff_location?: string
   // Private link to the ticket page: /ticket/<ticket_token>
   ticket_token?: string
+  // When the ticket was scanned at the bus door (ISO)
+  boarded_at?: string
   created_at: string
   trip?: Trip
 }
