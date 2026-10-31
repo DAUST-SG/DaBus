@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import Head from 'next/head'
 import TripCard from '@/components/TripCard'
 import api from '@/lib/api'
-import { Trip } from '@/types'
+import TripUpdates from '@/components/TripUpdates'
+import { Trip, TripUpdate } from '@/types'
 
 export default function HomePage() {
   const [trips, setTrips] = useState<Trip[]>([])
@@ -13,8 +14,12 @@ export default function HomePage() {
     destination: '',
   })
 
+  const [updates, setUpdates] = useState<TripUpdate[]>([])
+
   useEffect(() => {
     fetchTrips()
+    // News is optional: the page works without it
+    api.get<{ success: boolean; data: TripUpdate[] }>('/updates').then((r) => setUpdates(r.data.data || [])).catch(() => {})
   }, [])
 
   const fetchTrips = async () => {
@@ -97,6 +102,8 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
+        <TripUpdates updates={updates} title="News from the DaBus team" />
 
         {/* Trips Section */}
         <section>

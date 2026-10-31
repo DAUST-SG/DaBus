@@ -5,6 +5,8 @@ import Link from 'next/link'
 import QRCode from 'qrcode'
 import api from '@/lib/api'
 import { formatTripDate } from '@/lib/time'
+import TripUpdates from '@/components/TripUpdates'
+import { TripUpdate } from '@/types'
 
 type Ticket = {
   ref: string
@@ -16,6 +18,7 @@ type Ticket = {
   pickup_location?: string
   dropoff_location?: string
   trip: { origin: string; destination: string; departure_date: string; departure_time: string; status: string } | null
+  updates?: TripUpdate[]
 }
 
 // How long to keep asking Naboopay before telling the student to check back later
@@ -114,6 +117,7 @@ export default function TicketPage() {
             This booking expired before payment. <Link href="/" className="text-accent">Book again</Link>
           </div>
         )}
+        {ticket.status !== 'cancelled' && <TripUpdates updates={ticket.updates} />}
         {ticket.status === 'cancelled' && !expired && (
           <div className="px-4 py-3 rounded-xl bg-[rgba(var(--danger),0.08)] border border-[rgba(var(--danger),0.2)] text-[rgb(var(--danger))] text-sm">
             This ticket was cancelled{refunded ? ' and refunded' : ''}. It is no longer valid.

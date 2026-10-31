@@ -29,6 +29,15 @@ export interface Trip {
   // Only returned by GET /trips/:id
   pickup_checkpoints?: string[]
   dropoff_checkpoints?: string[]
+  updates?: TripUpdate[]
+}
+
+// A notice from the DaBus team; trip_id null = for everyone
+export interface TripUpdate {
+  id: string
+  trip_id: string | null
+  message: string
+  created_at: number
 }
 
 export interface Checkpoint {

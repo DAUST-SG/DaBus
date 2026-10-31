@@ -27,6 +27,7 @@ import type * as settings from "../settings.js";
 import type * as ticketEmail from "../ticketEmail.js";
 import type * as tickets from "../tickets.js";
 import type * as trips from "../trips.js";
+import type * as updates from "../updates.js";
 import type * as users from "../users.js";
 import type * as webhooks from "../webhooks.js";
 
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   ticketEmail: typeof ticketEmail;
   tickets: typeof tickets;
   trips: typeof trips;
+  updates: typeof updates;
   users: typeof users;
   webhooks: typeof webhooks;
 }>;

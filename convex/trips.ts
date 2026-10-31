@@ -6,6 +6,7 @@ import { activeCheckpointNames } from "./checkpoints";
 import { bookingsCloseAt, departureMs, now } from "./lib/time";
 import { getSettings } from "./settings";
 import { seatsTaken, syncSeats } from "./lib/seats";
+import { updatesFor } from "./updates";
 
 // The exact closing time goes to the page, which compares it with the clock itself
 // (a cached query result can't be trusted to know what time it is); bookings:create rechecks.
@@ -86,6 +87,7 @@ export const getById = query({
       ...withBookingWindow(trip, settings.default_booking_close_minutes),
       pickup_checkpoints: await activeCheckpointNames(ctx, trip.origin),
       dropoff_checkpoints: await activeCheckpointNames(ctx, trip.destination),
+      updates: await updatesFor(ctx, trip._id),
     };
   },
 });

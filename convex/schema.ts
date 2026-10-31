@@ -112,6 +112,8 @@ export default defineSchema({
     ticket_emailed_at: v.optional(v.number()),
     // Set when name/phone/email were erased under the retention rule (convex/privacy.ts)
     personal_data_erased_at: v.optional(v.number()),
+    // Kept after erasure: keyed hash of phone_key (RIDER_KEY_SECRET), equal for the same phone
+    rider_key: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
     legacy_id: v.optional(v.string()),
@@ -145,6 +147,14 @@ export default defineSchema({
     personal_data_months: v.optional(v.number()),
     updated_at: v.number(),
   }),
+
+  // Notices from the DaBus team: for one trip, or for everyone when trip_id is empty
+  updates: defineTable({
+    trip_id: v.optional(v.id("trips")),
+    message: v.string(),
+    posted_by: v.id("users"),
+    created_at: v.number(),
+  }).index("by_trip_id", ["trip_id"]),
 
   webhook_events: defineTable({
     source: v.string(),

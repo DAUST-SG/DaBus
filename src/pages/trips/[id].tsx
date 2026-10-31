@@ -4,6 +4,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import api from '@/lib/api'
 import Button from '@/components/Button'
+import TripUpdates from '@/components/TripUpdates'
 import { useAuth } from '@/context/AuthContext'
 import { Trip } from '@/types'
 import { bookingsOpen, formatDakarTime, formatTripDate } from '@/lib/time'
@@ -152,6 +153,8 @@ export default function TripDetailsPage() {
           </svg>
           Back to trips
         </Link>
+
+        <div className="mb-4 empty:hidden"><TripUpdates updates={trip.updates} /></div>
 
         <div className="glass rounded-3xl overflow-hidden">
           {/* Header */}
