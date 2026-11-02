@@ -16,7 +16,9 @@ export const send = internalAction({
     const from = process.env.DABUS_FROM_EMAIL || process.env.RESEND_FROM_EMAIL;
     const base = process.env.APP_BASE_URL;
     if (!apiKey || !from || !base) {
-      console.warn("Scan link email not sent: set RESEND_API_KEY, DABUS_FROM_EMAIL and APP_BASE_URL in Convex env");
+      const message = "Scan link email not sent: set RESEND_API_KEY, DABUS_FROM_EMAIL and APP_BASE_URL in Convex env";
+      console.warn(message);
+      await ctx.runMutation(internal.problems.report, { kind: "email", message });
       return;
     }
 
@@ -46,7 +48,10 @@ export const send = internalAction({
       }),
     });
     if (!response.ok) {
-      console.error(`Scan link email failed for trip ${args.tripId}: ${await response.text()}`);
+      // The admin was told the link was emailed; they can still copy it from the Boarding page
+      const message = `Scan link email failed for trip ${trip.origin} → ${trip.destination} ${trip.departure_date} (${data.email}): ${await response.text()}`;
+      console.error(message);
+      await ctx.runMutation(internal.problems.report, { kind: "email", message });
     }
   },
 });

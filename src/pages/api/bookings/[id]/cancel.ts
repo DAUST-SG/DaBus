@@ -6,7 +6,7 @@ import {
   sendError,
   sendSuccess,
 } from "@/server/api";
-import { convexMutation, convexQuery, serverSecret } from "@/server/convexClient";
+import { convexMutation, convexQuery, reportProblem, serverSecret } from "@/server/convexClient";
 import { NaboopayError, refundNaboopayTransaction } from "@/server/naboopay";
 
 // Student cancellation. Unpaid: cancel. Paid: refund through Naboopay first, then cancel,
@@ -45,6 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return sendSuccess(res, data, "Booking cancelled. Your refund is on its way.");
   } catch (error) {
     if (error instanceof NaboopayError) {
+      await reportProblem("refund", `A student's cancellation refund failed for booking ${bookingId}: ${error.message}. The booking is still active; refund it from Admin → Bookings.`);
       return sendError(res, 502, `The refund couldn't be processed (${error.message}). Your booking is still active; please contact the DaBus team.`);
     }
     const parsed = parseConvexError(error);

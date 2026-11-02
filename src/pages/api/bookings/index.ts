@@ -7,7 +7,7 @@ import {
   sendError,
   sendSuccess,
 } from "@/server/api";
-import { convexMutation, convexQuery, serverSecret } from "@/server/convexClient";
+import { convexMutation, convexQuery, reportProblem, serverSecret } from "@/server/convexClient";
 import { createNaboopayTransaction, NaboopayError } from "@/server/naboopay";
 
 const resolveBaseUrl = (req: NextApiRequest) => {
@@ -109,6 +109,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } catch (paymentError) {
+        const reason = paymentError instanceof NaboopayError ? paymentError.message : parseConvexError(paymentError).message || String(paymentError);
+        await reportProblem("payment", `Could not start a Naboopay payment for booking ${bookingId} (trip ${tripId}): ${reason}`);
         if (bookingId) {
           // For guest bookings without a token, cancel without session
           await convexMutation("bookings:cancel", {

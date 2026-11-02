@@ -105,7 +105,7 @@ const naboopay = async (path: string) => {
   return body;
 };
 
-const sendReport = async (subject: string, html: string, to: string[]) => {
+export const sendReport = async (subject: string, html: string, to: string[]) => {
   const apiKey = process.env.RESEND_API_KEY;
   // Student/admin notices come from the DaBus address; verification@ is only for sign-in links
   const from = process.env.DABUS_FROM_EMAIL || process.env.RESEND_FROM_EMAIL;
@@ -220,7 +220,9 @@ export const check = internalAction({
       try {
         await checkTrip(ctx, trip);
       } catch (error) {
-        console.error(`Min-seats check failed for trip ${trip._id}: ${error}`);
+        const message = `Min-seats check failed for trip ${trip.origin} → ${trip.destination} ${trip.departure_date} ${trip.departure_time} (${trip._id}): ${error}`;
+        console.error(message);
+        await ctx.runMutation(internal.problems.report, { kind: "min_seats", message });
       }
     }
   },

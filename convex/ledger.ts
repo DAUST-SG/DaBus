@@ -161,6 +161,8 @@ export const flush = internalAction({
       const line = `Ledger ${kind} for booking ${bookingId}: ${result.status ? `HTTP ${result.status}` : "not sent"} → ${result.outcome}${result.error ? ` (${result.error.slice(0, 300)})` : ""}`;
       if (result.outcome === "done") console.log(line);
       else console.warn(line);
+      // "retry" fixes itself on the next run; "failed" needs someone to look
+      if (result.outcome === "failed") await ctx.runMutation(internal.problems.report, { kind: "ledger", message: line });
       // Over the rate limit: stop here, the cron picks up the rest
       if (result.outcome === "slow_down") break;
     }
