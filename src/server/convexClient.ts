@@ -72,3 +72,10 @@ export const serverSecret = () => {
   }
   return secret;
 };
+
+// Records a failure for Admin → Settings → Alerts and emails the admins (see convex/problems.ts).
+// Never throws: reporting must not change the response the user gets.
+export const reportProblem = (kind: "payment" | "webhook" | "refund", message: string) =>
+  convexMutation("problems:reportFromServer", { serverSecret: serverSecret(), kind, message }).catch((error) =>
+    console.error(`Could not report problem (${kind}: ${message}): ${error}`),
+  );

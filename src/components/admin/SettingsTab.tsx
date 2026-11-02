@@ -3,8 +3,9 @@ import api from '@/lib/api'
 import Button from '@/components/Button'
 import { Checkpoint } from '@/types'
 import { apiError, BookingRules } from './shared'
+import AlertsPanel from './AlertsPanel'
 
-// Admin → Settings: booking rules, plus the checkpoints, add-admin and password pop-ups
+// Admin → Settings: booking rules, failure alerts, plus the checkpoints, add-admin and password pop-ups
 export default function SettingsTab() {
   const [bookingRules, setBookingRules] = useState<BookingRules | null>(null)
   const [savingRules, setSavingRules] = useState(false)
@@ -210,6 +211,7 @@ export default function SettingsTab() {
               </>
             )}
           </form>
+          <AlertsPanel />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { title: 'Checkpoints', text: 'Pickup and drop-off stops students choose from.', action: openCheckpoints },

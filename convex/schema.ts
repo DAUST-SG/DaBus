@@ -161,6 +161,8 @@ export default defineSchema({
     personal_data_months: v.optional(v.number()),
     // Naboopay's fee, paid by the passenger on top of the ticket price (fees_customer_side)
     payment_fee_percent: v.optional(v.number()),
+    // Who gets failure alerts, comma-separated; empty means every admin (see convex/problems.ts)
+    alert_emails: v.optional(v.string()),
     updated_at: v.number(),
   }),
 
@@ -177,4 +179,14 @@ export default defineSchema({
     event_id: v.string(),
     processed_at: v.number(),
   }).index("by_source_event", ["source", "event_id"]),
+
+  // Failures nobody would otherwise see (payments, refunds, ledger, emails), kept 30 days
+  problems: defineTable({
+    kind: v.string(),
+    message: v.string(),
+    alerted: v.boolean(),
+    created_at: v.number(),
+  })
+    .index("by_kind", ["kind", "created_at"])
+    .index("by_created_at", ["created_at"]),
 });

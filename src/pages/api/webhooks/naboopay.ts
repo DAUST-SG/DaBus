@@ -5,7 +5,7 @@ import {
   sendError,
   sendSuccess,
 } from "@/server/api";
-import { convexMutation, serverSecret } from "@/server/convexClient";
+import { convexMutation, reportProblem, serverSecret } from "@/server/convexClient";
 import { verifyNaboopaySignature } from "@/server/naboopay";
 
 export const config = {
@@ -81,6 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const secret = process.env.NABOOPAY_WEBHOOK_SECRET;
   if (!secret) {
+    await reportProblem("webhook", "A Naboopay payment notice arrived but NABOOPAY_WEBHOOK_SECRET is not set in Vercel, so it was refused. Paid bookings stay pending until synced.");
     return sendError(res, 500, "Webhook secret is not configured");
   }
 
@@ -107,6 +108,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return sendSuccess(res, data);
   } catch (error) {
     const parsed = parseConvexError(error);
+    // Naboopay retries; this tells someone to check the booking (or press Sync) if it keeps failing
+    await reportProblem("webhook", `Naboopay notice for order ${payload.order_id ?? "?"} (${payload.transaction_status || payload.status || "?"}) failed: ${parsed.message || String(error)}`);
     return sendError(res, parsed.status, parsed.message || "Webhook processing failed");
   }
 }
